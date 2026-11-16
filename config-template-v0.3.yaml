@@ -115,7 +115,7 @@ proxy-groups:
       - 👒 PROXY LIST
       - 🎮 Direct
       - ✂️ Reject
-    icon: https://raw.githubusercontent.com/nexterade/crispy-funicular/refs/heads/main/icon/0fcd5279.png
+    icon: https://raw.githubusercontent.com/nexterade/Hikari-SC/refs/heads/master/icon/12449f73.png
   - name: 🛸 AUTO MODE
     type: url-test
     disable-udp: false
@@ -128,48 +128,48 @@ proxy-groups:
     lazy: true
     timeout: 5000
     expected-status: 204
-    icon: https://raw.githubusercontent.com/nexterade/crispy-funicular/refs/heads/main/icon/8c122db7.png
+    icon: https://raw.githubusercontent.com/nexterade/Hikari-SC/refs/heads/master/icon/573055d6.png
   - name: 👒 PROXY LIST
     type: select
     use:
       - Active
       - Trial
-    icon: https://raw.githubusercontent.com/nexterade/crispy-funicular/refs/heads/main/icon/8f5d5e1c.png
+    icon: https://raw.githubusercontent.com/nexterade/Hikari-SC/refs/heads/master/icon/6e5ff33e.png
   - name: 🌳 SMART ROUTING
     type: select
     proxies:
       - 🧩 Inject
       - 🎮 Direct
       - ✂️ Reject
-    icon: https://raw.githubusercontent.com/nexterade/crispy-funicular/refs/heads/main/icon/afdb26dc.png
+    icon: https://raw.githubusercontent.com/nexterade/Hikari-SC/refs/heads/master/icon/b980f2d2.png
   - name: 💤 BLOCKER
     type: select
     proxies:
       - ✂️ Reject
       - 🧩 Inject
       - 🎮 Direct
-    icon: https://raw.githubusercontent.com/nexterade/crispy-funicular/refs/heads/main/icon/12d76ee4.png
+    icon: https://raw.githubusercontent.com/nexterade/Hikari-SC/refs/heads/master/icon/c37c9728.png
   - name: 💕 PLUSPLUS
     type: select
     proxies:
       - ✂️ Reject
       - 🧩 Inject
       - 🎮 Direct
-    icon: https://raw.githubusercontent.com/nexterade/crispy-funicular/refs/heads/main/icon/d2e42ded.png
+    icon: https://raw.githubusercontent.com/nexterade/Hikari-SC/refs/heads/master/icon/b3197af9.png
   - name: 🍪 WIFI
     type: select
     proxies:
       - 🎮 Direct
       - 🧩 Inject
       - ✂️ Reject
-    icon: https://raw.githubusercontent.com/nexterade/crispy-funicular/refs/heads/main/icon/e7b2cf16.png
+    icon: https://raw.githubusercontent.com/nexterade/Hikari-SC/refs/heads/master/icon/8bb3db53.png
   - name: 🪼 GAMING
     type: select
     proxies:
       - 🎮 Direct
       - 🧩 Inject
       - ✂️ Reject
-    icon: https://raw.githubusercontent.com/nexterade/crispy-funicular/refs/heads/main/icon/ff2bf617.png
+    icon: https://raw.githubusercontent.com/nexterade/Hikari-SC/refs/heads/master/icon/93244152.png
 
 proxy-providers:
   Active:
