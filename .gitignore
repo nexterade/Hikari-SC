@@ -14,7 +14,12 @@ dist/
 *.egg-info/
 
 # Output
+hasil/
 Hasil/
+
+# Salinan kerja template (bisa berisi secret) & backup
+template/template.yaml
+*.bak
 
 # Environment / secrets
 .env
@@ -30,3 +35,4 @@ Hasil/
 # OS
 .DS_Store
 Thumbs.db
+settings.json

@@ -1,9 +1,11 @@
 <div align="center">
 
-# 🌸 HIKARI SUBCLASH
+# 🌸 HIKARI /.CLASH
 
 **Toolkit CLI offline untuk convert & generate config Mihomo (Clash Meta)**
 satu template → siap pakai di **Box for Root**, **Nikki**, dan **OpenClash**
+
+<sub>Sebelumnya bernama *Hikari Subclash* / Hikari-SC.</sub>
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white)
 ![Core](https://img.shields.io/badge/Core-Mihomo%20%E2%89%A5%201.19-7c3aed)
@@ -22,6 +24,7 @@ satu template → siap pakai di **Box for Root**, **Nikki**, dan **OpenClash**
 - [Instalasi](#-instalasi)
 - [Struktur Folder](#-struktur-folder)
 - [Cara Pakai](#-cara-pakai)
+- [Miscellaneous (Menu 7)](#-miscellaneous-menu-7)
 - [Memasang Hasil ke Perangkat](#-memasang-hasil-ke-perangkat)
 - [Perbedaan Output per Platform](#-perbedaan-output-per-platform)
 - [Isi Template & Group](#-isi-template--group)
@@ -36,7 +39,7 @@ satu template → siap pakai di **Box for Root**, **Nikki**, dan **OpenClash**
 
 ## 💡 Kenapa Hikari?
 
-Ngatur config Mihomo di tiga platform itu ribet: port beda, path beda, fitur Android (tun, per-app) bentrok dengan OpenWrt, dan hampir semua tool convert butuh internet. Hikari menyelesaikannya dengan:
+Ngatur config Mihomo di tiga platform itu ribet: port beda, path beda, fitur Android (tun, per-app) bentrok dengan OpenWrt, dan hampir semua tool convert butuh internet. Hikari /.CLASH menyelesaikannya dengan:
 
 - **Satu template netral**, bagian yang beda per platform disuntik otomatis.
 - **Offline**: tempel link, jadi config. Tanpa subscription converter online.
@@ -56,9 +59,10 @@ Ngatur config Mihomo di tiga platform itu ribet: port beda, path beda, fitur And
 | ✅ **Validator** | Cek group/rule/provider, file provider, port bentrok, controller tanpa secret, DNS rawan, dll |
 | 🔌 **Mode Offline** | Ubah semua rule-provider `http` → `file` (tanpa update GitHub) |
 | ➕ **Replace / Append** | Timpa atau tambah node ke provider yang sudah ada |
-| 🌐 **Menu DNS** | Cloudflare+Google, Quad9 Unsecured, NextDNS, AdGuard, atau custom — format & komentar template dijaga |
+| 🌐 **Menu DNS** | Preset (Cloudflare+Google, Quad9, NextDNS, AdGuard, [BebasDNS](https://github.com/bebasid/bebasdns)) dengan pilihan **DoH / DoT / DoQ**, atau **custom manual** (IP, DoH, DoH3, DoT, DoQ, UDP/TCP, `system`, `dhcp://`, akhiran `#proxy`) per field — divalidasi, ada preview diff, format & komentar template dijaga |
 | 🧰 **Tools ruleset** | Padatkan `port-games.yaml` (23.366 baris → 87 range, perilaku identik) |
-| 🛡️ **Aman** | Auto-backup `.bak`, input divalidasi, `PermissionError` ditangani, pilihan secret dashboard (kosong / acak) |
+| 🧪 **Miscellaneous** | Converter rule-provider `.mrs` ⇄ `.yaml`/`.txt`, tester config (+ `mihomo -t`), tester node (offline / via core), tester route — lihat [menu 7](#-miscellaneous-menu-7) |
+| 🛡️ **Aman** | Auto-backup `.bak`, input divalidasi, `PermissionError` ditangani, pilihan secret dashboard (default `hikari` / acak) |
 
 ---
 
@@ -67,12 +71,12 @@ Ngatur config Mihomo di tiga platform itu ribet: port beda, path beda, fitur And
 ```mermaid
 flowchart LR
     A[Link URI<br/>vless / vmess / trojan] --> B[hikari_converter.py]
-    T[config-template-v0.3.yaml<br/>template netral] --> B
+    T[template/config_v0.5.yaml<br/>template netral] --> B
     R[ruleset/] --> B
     B --> P{Pilih platform}
-    P --> X[📱 Box<br/>full_config_box/]
-    P --> Y[🐧 Nikki<br/>full_config_nikki/]
-    P --> Z[🐧 OpenClash<br/>full_config_openclash/]
+    P --> X[📱 Box<br/>hasil/full_config_box/]
+    P --> Y[🐧 Nikki<br/>hasil/full_config_nikki/]
+    P --> Z[🐧 OpenClash<br/>hasil/full_config_openclash/]
     X --> V[✅ Validator]
     Y --> V
     Z --> V
@@ -98,42 +102,56 @@ termux-setup-storage          # izinkan akses penyimpanan
 pip install pyyaml            # butuh Python 3.8+
 ```
 
+**Opsional — konversi `.mrs`** (menu 7 → 1) butuh kompresi zstd. Python 3.14+ sudah bawaan; selain itu pasang salah satu: `pkg install zstd` (Termux), `pip install zstandard`, atau `opkg install libzstd zstd` (OpenWrt). Cek statusnya di menu `7 → 5`.
+
 **Ambil project:**
 
 ```bash
-git clone https://github.com/nexterade/crispy-funicular.git hikari_sub
-cd hikari_sub
+git clone https://github.com/nexterade/crispy-funicular.git hikari-clash
+cd hikari-clash
 ```
 
-> Di Termux, taruh foldernya di `/storage/emulated/0/Documents/hikari_sub` — **jangan** di `~` biar tidak kena `PermissionError` dan gampang diakses file manager.
+> Di Termux, taruh foldernya di `/storage/emulated/0/Documents/hikari-clash` — **jangan** di `~` biar tidak kena `PermissionError` dan gampang diakses file manager.
 
 ---
 
 ## 📂 Struktur Folder
 
 ```text
-hikari_sub/
-├── hikari_converter.py          # Script utama
-├── config-template-v0.3.yaml    # Template master (netral platform)
-├── template.yaml                # (otomatis) salinan kerja, dibuat saat kamu edit lewat menu
+hikari-clash/
+├── hikari_converter.py          # Script utama (menu & generator)
+├── banner.py                    # Banner Hikari /.CLASH
+├── mrs_codec.py                 # Codec rule-set .mrs ⇄ .yaml/.txt   (menu 7)
+├── nodetest.py                  # Tester node proxy                  (menu 7)
+├── routetest.py                 # Tester route domain/IP             (menu 7)
+├── template/
+│   ├── config_v0.5.yaml         # Template master terbaru (netral platform, DNS BebasDNS)
+│   ├── config_v0.4.yaml         # Template master lama (dibiarkan utuh)
+│   ├── config_v0.3.yaml         # Template master lama (dibiarkan utuh)
+│   └── template.yaml            # (otomatis) salinan kerja, dibuat saat kamu edit lewat menu
 ├── emoji.json                   # Daftar emoji nama node (edit lewat menu atau langsung di file)
+├── settings.json                # (otomatis, tidak di-commit) pengaturan pengguna: profil ISP
 ├── ruleset/                     # Ruleset (WAJIB): *.yaml & *.mrs
 ├── archive/                     # Template lama v0.1/v0.2 + port-games versi penuh
+├── tests/                       # Tes otomatis: python3 -m unittest discover -s tests
 ├── AUDIT.md                     # Perbandingan template, temuan audit, saran
-└── Hasil/                       # (otomatis) hasil generate
+└── hasil/                       # (otomatis) hasil generate
     ├── full_config_box/
     ├── full_config_nikki/
-    └── full_config_openclash/
+    ├── full_config_openclash/
+    └── rules/                   # hasil Rule-Provider Converter (menu 7)
 ```
 
-Template yang dipakai: **`template.yaml`** bila ada, kalau tidak **`config-template-v*.yaml` terbaru**. Edit lewat menu selalu mengubah `template.yaml`; template master tidak pernah disentuh.
+Template yang dipakai: **`template/template.yaml`** bila ada, kalau tidak **`template/config_v*.yaml` terbaru**. Edit lewat menu selalu mengubah `template/template.yaml`; template master tidak pernah disentuh. Template baru ditambahkan sebagai file baru (`config_v0.5.yaml`, dst.), versi lama tidak ditimpa.
+
+> Upgrade dari layout lama? Saat dijalankan, script otomatis memindahkan `Hasil/` → `hasil/` dan `template.yaml` (root) → `template/template.yaml`.
 
 ---
 
 ## 🚀 Cara Pakai
 
 ```bash
-cd /storage/emulated/0/Documents/hikari_sub
+cd /storage/emulated/0/Documents/hikari-clash
 python hikari_converter.py
 ```
 
@@ -146,6 +164,7 @@ python hikari_converter.py
 [4] Validasi / Audit Config ← cek template untuk ketiga platform
 [5] Tools Ruleset           ← padatkan port-games.yaml
 [6] Exit
+[7] Miscellaneous         ← converter .mrs, tester config / node / route
 ```
 
 ### Alur Convert (URI ➜ Clash)
@@ -156,27 +175,46 @@ python hikari_converter.py
 3. **Pilih platform**: `B` Box · `N` Nikki · `O` OpenClash.
 4. **Pilih provider**: `active.yaml` atau `trial.yaml`. Jika sudah berisi node, pilih **Ganti** atau **Tambahkan**.
 5. **Mode rule-provider**: ikuti template (auto-update GitHub) atau **Offline** (file lokal saja).
-6. **Secret dashboard**: `[1]` kosong (ikuti template, default) atau `[2]` acak.
+6. **Secret dashboard**: `[1]` ikuti template (default: `hikari`) atau `[2]` acak.
 7. Selesai. Script menampilkan lokasi hasil, hasil validasi, dan secret yang dipakai.
 
 ### Convert Clash ➜ URI
 
-Menu `1 → 2`: paste YAML, atau pilih file provider hasil generate. Hasil bisa disimpan ke `Hasil/URI_<tanggal>.txt`.
+Menu `1 → 2`: paste YAML, atau pilih file provider hasil generate. Hasil bisa disimpan ke `hasil/URI_<tanggal>.txt`.
 
 ### Edit Configuration
 
 - **Port & Secret**: ketik `acak` pada Secret untuk generate otomatis. Port divalidasi 1–65535.
-- **Ganti Template**: pilih dari `config-template-v*.yaml` yang ada, atau path file sendiri (divalidasi sebelum dipakai).
-- **DNS**: pilih preset atau custom (lihat [Tips DNS](#-tips--trik)).
+- **Ganti Template**: pilih dari `template/config_v*.yaml` yang ada, atau path file sendiri (divalidasi sebelum dipakai).
+- **DNS & Nameserver** (`2 → 3`): lihat isi tiap field beserta jenisnya (`[DoH]`, `[DoT]`, `[UDP]`, …), lalu:
+  - **Preset** — urutan: **BebasDNS (default)**, Cloudflare+Google, Quad9, NextDNS, AdGuard. Pilih provider + protokol (DoH/DoT/DoQ; DoQ hanya di provider yang menyediakannya). **BebasDNS** punya 4 varian: Bawaan, Security (anti-malware), Unfiltered, Family — hanya DoH/DoT, dan karena BebasDNS tidak punya IP polos publik, field IP-nya diisi 1.1.1.1 & 8.8.8.8. Memilih BebasDNS otomatis mengisi `nameserver` = BebasDNS dan `fallback` = Cloudflare + Google. `nameserver`/`fallback` diisi alamat terenkripsi, sedangkan `default-`/`proxy-server-`/`direct-nameserver` diisi IP polos dari provider yang sama.
+  - **Custom manual** — pilih field target (boleh beberapa, mis. `1,3`), lalu ketik entri bebas format, satu per baris atau pisah koma. Contoh: `1.1.1.1`, `8.8.8.8:53`, `https://dns.google/dns-query`, `tls://1.1.1.1`, `quic://dns.adguard-dns.com`, `tcp://1.1.1.1`, `system`, `dhcp://wlan0`, `https://1.1.1.1/dns-query#NamaGroup`. Mode **Ganti** atau **Tambahkan**.
+  - **Kembalikan ke master** — salin nilai DNS dari template master terbaru.
+  - **Profil ISP** — lihat [DNS leak & provider XL Axiata](#-tips--trik).
+  - Aturan per field: `default-nameserver` **harus IP** (ditolak kalau bukan); `nameserver`/`fallback` diperingatkan kalau tidak terenkripsi; `proxy-server-nameserver` diperingatkan kalau terenkripsi semua. Selalu ada preview `-`/`+` dan konfirmasi sebelum menulis, plus backup `.bak`.
 - **Emoji Node**: lihat daftar emoji, `[A]` tambah, `[H]` hapus (nomor), `[T]` nyalakan/matikan, `[R]` reset ke bawaan. Tersimpan di `emoji.json`.
+
+---
+
+## 🧪 Miscellaneous (Menu 7)
+
+Kumpulan tools tambahan. Semuanya offline; yang butuh sesuatu dari luar (core Mihomo, zstd) bilang jelas kalau belum ada.
+
+| Submenu | Fungsi | Catatan |
+|---|---|---|
+| **1. Rule-Provider Converter** | `.mrs` ⇄ `.yaml` / `.txt`. Arah otomatis dari ekstensi; ada mode batch (semua `.mrs` di `ruleset/` → YAML) dan info `.mrs` | Hasil di `hasil/rules/`. Perlu backend zstd (lihat [Instalasi](#-instalasi)). `domain` sudah diuji: hasil tulis identik (setelah dekompresi) dengan `blocker.mrs` & `plus18.mrs`; `ipcidr` belum diuji dengan file asli → cek dengan core sebelum dipakai |
+| **2. Config Tester** | Validator internal untuk config hasil generate + `mihomo -t` kalau core ketemu (PATH, lokasi umum Box/OpenClash, atau env `HIKARI_MIHOMO`) | Juga menjalankan **audit DNS leak statis** (DNS ISP / tak terenkripsi di nameserver & fallback, respect-rules, fake-ip, IPv6). Tes core untuk Nikki dilewati di luar perangkat Nikki (path-nya absolut `/etc/nikki/run`) |
+| **3. Proxy Node Tester** | **Offline**: DNS → TCP → TLS ke server node. **Via core**: delay sungguhan lewat `external-controller` | Offline hanya menjawab "server terjangkau dari jaringan ini?", bukan "proxy tembus ke internet?". Node UDP (hysteria/tuic) dilewati. Node hidup bisa disimpan ke `hasil/nodes_ok_*.yaml` |
+| **4. Route Tester** | Ketik domain/IP (`chatgpt.com`, `1.1.1.1:443`, `udp://x.com:443`) → rule & group yang kena | Tanpa DNS lookup; rule `GEOIP`/`SRC-*`/`PROCESS-*` ditandai "tidak bisa dievaluasi", tidak ditebak |
+| **5. Info Lingkungan** | Versi Python/PyYAML, backend zstd, lokasi core, template aktif | Berguna untuk debugging |
 
 ---
 
 ## 📲 Memasang Hasil ke Perangkat
 
-Semua hasil ada di folder `Hasil/`.
+Semua hasil ada di folder `hasil/`.
 
-### 📱 Box for Root → `Hasil/full_config_box/`
+### 📱 Box for Root → `hasil/full_config_box/`
 
 Salin **semua isi folder** ke:
 
@@ -184,7 +222,7 @@ Salin **semua isi folder** ke:
 /data/adb/box/clash/
 ```
 
-### 🐧 Nikki → `Hasil/full_config_nikki/`
+### 🐧 Nikki → `hasil/full_config_nikki/`
 
 | Salin | Ke |
 |---|---|
@@ -193,7 +231,7 @@ Salin **semua isi folder** ke:
 
 *Jangan dibalik — Nikki memisahkan profile dan file yang berjalan.*
 
-### 🐧 OpenClash → `Hasil/full_config_openclash/`
+### 🐧 OpenClash → `hasil/full_config_openclash/`
 
 | Salin | Ke |
 |---|---|
@@ -213,7 +251,7 @@ Pindahkan file ke OpenWrt pakai SFTP/WinSCP/scp, atau file manager yang punya ak
 | Port | 7890 / 7891 / 7892 / **9797** / **9898** | dari template | dari template |
 | DNS listen | **1053** | dari template | dari template |
 | Blok `tun` | ada (off, dikelola Box) | dibuang | dibuang |
-| `find-process-mode` | `always` (lihat app per koneksi) | – | – |
+| `find-process-mode`, `geodata-mode`, `experimental`, `external-ui` | disuntik (`always`, `./dashboard`) | – | – |
 | Group & rule **WIFI** | ada | **dibuang** | **dibuang** |
 | Path provider | `./proxy`, `./ruleset` | `/etc/nikki/run/proxy`, `/etc/nikki/run/ruleset` | `./proxy_provider`, `./rule_provider` |
 | `external-controller` | `127.0.0.1:9090` | `0.0.0.0:9090` | `0.0.0.0:9090` |
@@ -231,7 +269,7 @@ Urutan rule = prioritas (atas ke bawah):
 | 1 | `Direct` | DIRECT | LAN, `.local`, `.lan` |
 | 2 | `DnsHijack` | 🐬 Hijack | DNS port 53 |
 | 3 | `Reject` | ✂️ Reject | DoT (853) & QUIC (UDP 443) |
-| 4 | `WifiClients` | 🪺 WIFI | Client WiFi/hotspot *(Box saja)* |
+| 4 | `WifiClients` | 🍪 WIFI | Client WiFi/hotspot *(Box saja)* |
 | 5 | `Blocker` | 💤 BLOCKER | Blokir iklan |
 | 6 | `Plusplus` | 💕 PLUSPLUS | Unblock konten +18 |
 | 7 | `Portgames` | 🪼 GAMING | Port game (default Direct) |
@@ -239,7 +277,7 @@ Urutan rule = prioritas (atas ke bawah):
 | 9 | `SmartMode` | 🌳 SMART ROUTING | AI, game launcher, sosmed, ISP |
 | – | `MATCH` | 🧩 Inject | Sisanya |
 
-Group node: **🧩 Inject** (pusat), **🦈 AUTO MODE** (url-test), **🍋‍🟩 PROXY LIST** (pilih manual). Semua memakai provider `Active` + `Trial`.
+Group node: **🧩 Inject** (pusat), **🛸 AUTO MODE** (url-test), **👒 PROXY LIST** (pilih manual). Semua memakai provider `Active` + `Trial`. Nama group di tabel ini identik dengan `template/config_v0.5.yaml` — kalau kamu mengganti nama di template, ganti juga di `rules:` dan `proxies:` group yang mengacu ke nama itu.
 
 ---
 
@@ -263,10 +301,10 @@ Rule-provider di template bertipe `http` (update tiap 24 jam dari GitHub); file 
 
 ## 🎒 Tips & Trik
 
-**🔖 Alias Termux** — cukup ketik `subclash`:
+**🔖 Alias Termux** — cukup ketik `hikari`:
 
 ```bash
-echo 'alias subclash="cd /storage/emulated/0/Documents/hikari_sub && python hikari_converter.py"' >> ~/.bashrc
+echo 'alias hikari="cd /storage/emulated/0/Documents/hikari-clash && python hikari_converter.py"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -278,24 +316,29 @@ source ~/.bashrc
 
 **🌐 Tips DNS (penting!)**
 
+- **Default v0.5 (target: lolos dnsleak):** `nameserver` = **BebasDNS** (DoH), `fallback` = **Cloudflare + Google** (DoH), `fallback-filter.geoip: false`. Dengan `respect-rules` + `fake-ip`, query DNS keluar lewat proxy, jadi dnsleak test seharusnya hanya menampilkan resolver BebasDNS/Cloudflare/Google, bukan DNS ISP. Menu `7 → 2` memeriksa ini secara statis; verifikasi akhir tetap lewat dnsleaktest.com / bash.ws dari perangkat. (Catatan: Mihomo meng-query `fallback` bersamaan dengan `nameserver`, jadi **semua** isi keduanya harus non-ISP.)
+- `fallback-filter.geoip: false` dipasang karena filter bawaan Mihomo (geoip CN) tidak relevan di Indonesia. Perilaku persisnya belum diuji di core asli; validator memperingatkan kalau `fallback` dipakai tanpa itu.
+- **XL Axiata:** di jaringan XL, tunneling Nikki/OpenClash butuh DNS `112.215.203.254`. Pilih **Profil ISP → XL Axiata** (menu `2 → 3 → 4`, atau saat generate untuk Nikki/OpenClash). Script menyuntikkannya ke `default-nameserver` dan `proxy-server-nameserver` — hanya me-resolve host DoH & domain server proxy, **bukan** domain yang kamu buka, sehingga dnsleak tetap bersih. Template v0.2 dulu menaruhnya juga di `fallback`; kalau tunneling masih gagal, tambahkan `fallback` lewat menu yang sama — tapi DNS XL lalu akan terlihat di dnsleak (audit menandainya `LEAK`). Pengaturan tersimpan di `settings.json`; Box tidak diubah.
 - `nameserver` (DoH) lewat proxy → aman dari reset ISP.
 - `proxy-server-nameserver` & `direct-nameserver` sengaja **DNS polos** (`8.8.8.8`, `1.1.1.1`). Banyak ISP/modem **me-reset DoH** ke IP publik port 443; kalau itu dipakai untuk resolve domain server proxy, **semua node timeout**.
-- Kalau `8.8.8.8` ikut diblok di jaringanmu, ganti ke DNS ISP lewat menu *DNS → Custom* atau edit `template.yaml`.
-- Menu DNS tidak menerapkan DoH ke `proxy-server-nameserver` secara default, dan validator akan memperingatkan kalau list itu DoH semua.
+- Kalau `8.8.8.8` ikut diblok di jaringanmu, ganti ke DNS ISP lewat menu *DNS → Custom manual* (field `proxy-server-nameserver`) atau edit `template/template.yaml`.
+- Preset hanya mengisi `proxy-server-nameserver` dengan IP polos; kalau kamu isi dengan DoH/DoT lewat Custom, menu dan validator akan memperingatkan.
+- **BebasDNS** (`dns.bebasid.com`, MIT): kalau ISP/WiFi-mu memakai DPI dan memblokir domain DoH/DoT-nya, hubungi `dukungan@bebasid.com` untuk domain alternatif, lalu masukkan lewat *Custom manual*.
+- Host DoH/DoT/DoQ berupa domain (mis. `dns.google`) di-resolve lewat `default-nameserver`, makanya field itu wajib IP.
 
 **🔌 Mode Offline** — pilih saat generate kalau tidak mau ruleset berubah sendiri, atau GitHub raw sedang lambat/terblokir.
 
-**🧪 Validasi dulu sebelum pasang** — menu `4` mengecek template untuk Box, Nikki, dan OpenClash sekaligus. Opsional, kalau core Mihomo ada di mesinmu:
+**🧪 Validasi dulu sebelum pasang** — menu `4` mengecek template untuk Box, Nikki, dan OpenClash sekaligus; menu `7 → 2` mengecek config hasil generate (dan menjalankan `mihomo -t` otomatis kalau core ada). Manual:
 
 ```bash
-mihomo -t -d Hasil/full_config_box -f Hasil/full_config_box/config.yaml
+mihomo -t -d hasil/full_config_box -f hasil/full_config_box/config.yaml
 ```
 
-**🔐 Secret dashboard** — default-nya kosong (ikuti template); script menanyakan kosong atau acak setiap generate. Mau secret tetap? Isi lewat menu `2 → 1` (ketik `acak` atau secret sendiri), tersimpan di `template.yaml`. Catatan: di Nikki/OpenClash yang berlaku biasanya secret dari LuCI, dan dashboard yang terbuka ke LAN sebaiknya pakai secret.
+**🔐 Secret dashboard** — default template: **`hikari`**. Setiap generate script menanyakan: ikuti template (`hikari`) atau acak. Mau secret tetap lain? Isi lewat menu `2 → 1` (ketik `acak` atau secret sendiri), tersimpan di `template/template.yaml`. ⚠️ `hikari` adalah secret yang mudah ditebak: di Box aman karena controller hanya `127.0.0.1`, tetapi di Nikki/OpenClash controller dibuka ke `0.0.0.0` — pakai secret acak/sendiri kalau jaringanmu dipakai orang lain. Di Nikki/OpenClash yang berlaku biasanya secret dari LuCI.
 
-**🪵 Debug** — ubah `log-level: warning` jadi `debug` di `template.yaml`, generate ulang, lalu lihat tab *Logs* di dashboard.
+**🪵 Debug** — ubah `log-level: warning` jadi `debug` di `template/template.yaml`, generate ulang, lalu lihat tab *Logs* di dashboard.
 
-**🧯 Backup** — setiap edit lewat menu membuat `template.yaml.bak`. Template master & `archive/` aman untuk rollback.
+**🧯 Backup** — setiap edit lewat menu membuat `template/template.yaml.bak`. Template master & `archive/` aman untuk rollback.
 
 **🎮 Rule GAMING** — `port-games.yaml` mencocokkan port TCP+UDP. Kalau ingin hanya UDP, ubah entri jadi `AND,((NETWORK,UDP),(DST-PORT,5000-5221))`.
 
@@ -308,11 +351,12 @@ mihomo -t -d Hasil/full_config_box -f Hasil/full_config_box/config.yaml
 | Gejala | Penyebab | Solusi |
 |---|---|---|
 | Semua node *timed out*; log: `dns resolve failed ... connection reset by peer` | DoH ke 8.8.8.8 / 1.1.1.1 :443 di-reset ISP, domain server proxy tidak ter-resolve | `proxy-server-nameserver` pakai DNS polos (default template sekarang). Cek: `nslookup domain-server-mu 8.8.8.8` |
-| Di OpenWrt semua trafik Direct | Rule WIFI ikut ke router | Pakai script v2 / template v0.3 (WIFI otomatis dibuang) |
-| Node Reality/Vision tidak konek | Parser lama membuang `flow` & `fp` | Script v2 membawa `flow`, `client-fingerprint`, `pbk`, `sid` |
+| Di OpenWrt semua trafik Direct | Rule WIFI ikut ke router | Pakai script v3 / template v0.3+ (WIFI otomatis dibuang) |
+| Node Reality/Vision tidak konek | Parser lama membuang `flow` & `fp` | Script v3 membawa `flow`, `client-fingerprint`, `pbk`, `sid` |
 | `PermissionError` | Folder di `~` Termux | Pindah ke `/storage/emulated/0/...` setelah `termux-setup-storage` |
 | `PyYAML belum terpasang` | Library belum ada | `pip install pyyaml` |
-| Dashboard minta secret | Secret diset (acak/LuCI) | Lihat ringkasan setelah generate; di Nikki/OpenClash pakai secret dari LuCI |
+| Dashboard minta secret | Secret default `hikari`, acak, atau dari LuCI | Lihat ringkasan setelah generate; di Nikki/OpenClash pakai secret dari LuCI |
+| Emoji node tidak sesuai `emoji.json` | JSON rusak (mis. koma berlebih di akhir) | Script sekarang memberi peringatan saat start & di Check Status; perbaiki filenya atau Reset lewat menu `2 → 4 → R` |
 | Port bentrok / core gagal start | Dua port sama | Menu `4` (Validasi) menunjukkan port ganda |
 | Rule-provider gagal download | GitHub raw lambat/terblokir | Mode Offline, atau pakai `proxy:` pada provider |
 | `transport 'xhttp' belum didukung` | Transport belum ada di parser | Pakai node dengan ws/grpc/tcp, atau tambahkan manual di YAML |
@@ -322,8 +366,17 @@ mihomo -t -d Hasil/full_config_box -f Hasil/full_config_box/config.yaml
 
 ## ❓ FAQ
 
-**Apa bedanya `template.yaml` dan `config-template-v0.3.yaml`?**
-Yang kedua master. `template.yaml` salinan kerja yang dibuat otomatis saat kamu edit lewat menu. Kalau `template.yaml` ada, dialah yang dipakai.
+**Apa bedanya `template/template.yaml` dan `template/config_v0.5.yaml`?**
+Yang kedua master. `template.yaml` salinan kerja yang dibuat otomatis saat kamu edit lewat menu. Kalau `template.yaml` ada, dialah yang dipakai — jadi setelah ada master baru, ganti lewat `2 → 2` (Check Status akan memberi tahu kalau salinan kerjamu tertinggal).
+
+**Apa bedanya template v0.5 dengan v0.4?**
+Hanya DNS: `nameserver` jadi BebasDNS, `fallback` Cloudflare+Google dengan `fallback-filter.geoip: false`, supaya lolos dnsleak. Profil ISP (XL Axiata) disuntik script, bukan ditaruh di template. v0.4 tetap ada. *Catatan: `template/template.yaml` salinan kerjamu tidak ikut berubah — pakai `2 → 2` untuk pindah ke v0.5 atau `2 → 3 → 3` untuk menyalin DNS-nya saja.*
+
+**Apa bedanya template v0.4 dengan v0.3?**
+Isinya sama, tetapi v0.4 benar-benar netral: blok khusus Box (`tun`, `find-process-mode`, `geodata-mode`, `experimental`, `external-ui`) dipindah dari template ke overlay Box di `hikari_converter.py`. v0.3 tetap ada untuk rollback.
+
+**Kenapa nama proyeknya berubah?**
+Rebranding dari *Hikari Subclash* / Hikari-SC menjadi **Hikari /.CLASH**. Nama file script (`hikari_converter.py`) dan URL GitHub (icon/ruleset) sengaja tidak diubah supaya config lama tidak rusak.
 
 **Komentar di config hasil generate kok hilang?**
 Hasil generate adalah dump YAML. Komentar tetap ada di template sumber.
@@ -344,7 +397,7 @@ Lihat [`AUDIT.md`](AUDIT.md): perbandingan, daftar temuan, dan koreksi.
 
 ## 🗺️ Roadmap
 
-- [ ] Uji otomatis dengan core asli (`mihomo -t`) di CI
+- [x] Tester config + `mihomo -t` lokal (menu 7 → 2) · [ ] Uji otomatis dengan core asli di CI
 - [ ] Overlay platform sebagai file (`platforms/*.yaml`), bukan di dalam kode
 - [ ] Protokol: `ss://`, `hy2://`, TUIC, `xhttp`
 - [ ] Mode non-interaktif (`--platform nikki --input nodes.txt --offline`)
@@ -364,6 +417,6 @@ Proyek ini dibuat untuk mempermudah pengelolaan konfigurasi pribadi. Pastikan pe
 
 <div align="center">
 
-Made with 🌸 for Box · Nikki · OpenClash
+Hikari /.CLASH · Made with 🌸 for Box · Nikki · OpenClash
 
 </div>

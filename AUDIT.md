@@ -1,4 +1,6 @@
-# HIKARI-SC — Perbandingan, Audit & Saran (v0.1 → v0.2 → v0.3)
+# HIKARI /.CLASH — Perbandingan, Audit & Saran (v0.1 → v0.2 → v0.3 → v0.4)
+
+> Dulu bernama Hikari Subclash / Hikari-SC. Bagian 1–5 ditulis sebelum rebranding dan tetap memakai istilah lama; ringkasan perubahan terbaru ada di **bagian 6**.
 
 Tanggal audit: 2026-11-16. Scope: `config-template-v0.1`, `config-template-v0.2`, `hikari_converter.py`, folder `ruleset/`.
 
@@ -32,7 +34,7 @@ Tanggal audit: 2026-11-16. Scope: `config-template-v0.1`, `config-template-v0.2`
 
 | # | Sev. | Temuan | Dampak | Status v0.3 |
 |---|---|---|---|---|
-| T1 | 🔴 | `external-controller: 0.0.0.0:9090` + `secret: ''` | API terbuka tanpa auth ke LAN/hotspot (bisa ganti node, baca koneksi) | Default `127.0.0.1`; script membuka `0.0.0.0` hanya di OpenWrt; secret **ditanyakan** saat generate (kosong atau acak) — validator memberi peringatan bila terbuka ke LAN tanpa secret |
+| T1 | 🔴 | `external-controller: 0.0.0.0:9090` + `secret: ''` | API terbuka tanpa auth ke LAN/hotspot (bisa ganti node, baca koneksi) | Default `127.0.0.1`; script membuka `0.0.0.0` hanya di OpenWrt; secret default `hikari` (bisa diganti lewat menu atau dipilih acak saat generate) — validator memberi peringatan bila terbuka ke LAN tanpa secret. *Lihat bagian 6: keputusan default secret.* |
 | T2 | 🔴 | Rule `WifiClients` (`SRC-IP-CIDR,192.168.0.0/16`) ada di semua platform | Di OpenWrt **semua** client LAN ber-IP 192.168.x.x → seluruh trafik jatuh ke group WIFI (default Direct) → proxy/blocker/inject tidak pernah jalan. `wifi.yaml` sendiri menulis "khusus Box mode tproxy" | Script membuang rule+group+provider WIFI untuk Nikki/OpenClash |
 | T3 | 🟠 | DNS: UDP:53 polos, `fallback` tanpa `fallback-filter`, IP DNS ISP, `respect-rules` hilang | Kebocoran DNS ke ISP, tidak portable (IP ISP tertentu), mundur dari klaim "DoH only / Anti-Leak" di v0.1 | DoH-only + `respect-rules` + `proxy-server-nameserver`; bootstrap IP polos hanya untuk resolve host DoH |
 | T4 | 🟠 | Template dipakai "apa adanya" di Box, padahal port-nya bukan port Box (redir 7892/tproxy 7895 vs 9797/9898; dns 7874 vs 1053) | Iptables/tproxy Box tidak menemukan port yang diharapkan **[perlu cek: tergantung `settings.ini` Box-mu]** | Overlay Box menyuntik port 9797/9898, dns 1053, blok tun, `find-process-mode` |
@@ -93,7 +95,7 @@ Tanggal audit: 2026-11-16. Scope: `config-template-v0.1`, `config-template-v0.2`
 6. **Impor subscription.** Fetch URL (saat online) → parse base64/Clash → merge ke provider; plus rename/filter node (regex negara), dedupe berdasar `server+port+uuid`, dan group otomatis per negara (`filter:` pada proxy-group).
 7. **Mirror rule-provider.** Tambah fallback CDN (mis. jsDelivr) untuk URL GitHub raw yang kadang lambat/terblokir di beberapa ISP, atau `proxy:` seragam untuk semua provider http.
 8. **Versi & migrasi template.** Tambah `# template-version: 0.3` + pengecekan di script ("template.yaml lebih tua dari master — merge?") agar edit lokal tidak ketinggalan.
-9. **Keamanan Box.** Hindari secret default yang bisa ditebak (`hikari`) dan bundel dashboard (zashboard/metacubexd) per platform di folder `ui/`.
+9. **Keamanan Box.** ~~Hindari secret default yang bisa ditebak (`hikari`)~~ — *diputuskan tetap `hikari` sebagai default (lihat bagian 6)*; bundel dashboard (zashboard/metacubexd) per platform di folder `ui/` masih terbuka.
 10. **Pengecekan konflik ruleset.** Validator tingkat lanjut: entri `Skip-Sniff` vs `Force-Sniff` yang saling tumpang tindih, entri `IP-CIDR` tanpa `no-resolve`, domain tidak valid di rule-set `behavior: domain`.
 
 ---
@@ -104,4 +106,40 @@ Tanggal audit: 2026-11-16. Scope: `config-template-v0.1`, `config-template-v0.2`
 **Penyebab:** v0.3 awal memakai DoH untuk `proxy-server-nameserver`. Jaringan/ISP me-reset DoH ke 8.8.8.8 & 1.1.1.1 :443 → domain server proxy tak bisa di-resolve. Ini kesalahan audit: DNS polos di v0.2 ternyata punya alasan.
 **Perbaikan:** `proxy-server-nameserver` dan `direct-nameserver` = DNS polos (8.8.8.8, 1.1.1.1); `nameserver` tetap DoH (lewat proxy). Validator kini memberi peringatan bila `proxy-server-nameserver` DoH semua. Menu DNS tidak lagi menerapkan DoH ke `proxy-server-nameserver` secara default.
 
-**Update:** auto-generate secret dihapus. Setelah input URI, script menanyakan secret dashboard: kosong (default, ikuti template) atau acak.
+**Update:** auto-generate secret dihapus. Setelah input URI, script menanyakan secret dashboard: ikuti template (default `hikari`) atau acak.
+
+---
+
+## 6. Update v0.4 / script v3 (2026-11-17)
+
+Tindak lanjut temuan audit + permintaan pemilik proyek.
+
+| Item | Status | Keterangan |
+|---|---|---|
+| `emoji.json` invalid (trailing comma) → daftar 22 emoji tidak pernah terpakai | ✅ Selesai | File diperbaiki; `DEFAULT_EMOJIS` di script kini **identik** dengan isi `emoji.json` (22 emoji; tes memastikan keduanya sinkron). Loader tidak lagi diam-diam: koma berlebih ditoleransi dan JSON rusak memunculkan peringatan saat start & di Check Status |
+| Secret tidak sesuai dokumentasi | ✅ Disinkronkan | **Keputusan: default tetap `hikari`.** README/AUDIT diperbarui (sebelumnya tertulis "kosong"); prompt secret saat generate menampilkan nilai template. **Risiko yang diterima:** di Nikki/OpenClash controller dibuka `0.0.0.0:9090`, dan `hikari` mudah ditebak. Validator sengaja tidak memberi peringatan untuk secret default (supaya hasil validasi tetap bersih sesuai keputusan); pakai opsi "Acak" bila jaringan dipakai orang lain |
+| Template "netral" tapi berisi blok Box | ✅ Template **v0.4** | `tun`, `find-process-mode`, `geodata-mode`, `experimental`, `external-ui` dipindah ke overlay Box di script. `external-ui` kini tidak ikut ke Nikki/OpenClash. v0.3 **tidak ditimpa** (`template/config_v0.3.yaml`) |
+| Lokasi template di root | ✅ Dipindah | `template/config_v*.yaml` (master) dan `template/template.yaml` (salinan kerja). Layout lama dimigrasi otomatis saat script dijalankan |
+| `Hasil/` → `hasil/` | ✅ Selesai | Termasuk `.gitignore`, dokumentasi, dan migrasi otomatis. Catatan: di filesystem case-sensitive (Android/Linux) kedua nama dianggap berbeda — jika dua-duanya ada, script memakai `hasil/` dan memberi peringatan |
+| Nama group README ≠ template | ✅ Selesai | README mengikuti template (🍪 WIFI, 👒 PROXY LIST, 🛸 AUTO MODE); komentar `smartmode.yaml` & `wifi.yaml` ikut dibetulkan; tes otomatis menjaga sinkronisasi ini |
+| `.gitignore` kurang | ✅ Selesai | `hasil/`, `template/template.yaml`, `*.bak` |
+| Menu 7 Miscellaneous | ✅ Baru | Rule-Provider Converter, Config Tester, Proxy Node Tester, Route Tester, Info Lingkungan (modul `mrs_codec.py`, `nodetest.py`, `routetest.py`) |
+| Banner & rebranding | ✅ Selesai | `banner.py` dipakai untuk semua layar; nama tampilan "Hikari /.CLASH". Nama file `hikari_converter.py` dan URL GitHub tidak diubah |
+| Tes otomatis | ✅ Awal | `tests/test_hikari.py` (stdlib `unittest`) — 18 tes: emoji, path, netralitas template, 3 platform bersih di validator, migrasi, round-trip `.mrs`, route & node tester |
+
+**Masih terbuka (butuh keputusan pemilik):**
+1. **URL rule-provider vs repo.** Semua rule-provider `type: http` menunjuk `nexterade/crispy-funicular` (branch `main`), sedangkan icon menunjuk `nexterade/Hikari-SC` (branch `master`). Perubahan ruleset yang hanya di-commit ke Hikari-SC **tidak** sampai ke perangkat. Belum diubah karena menentukan repo mana yang jadi sumber kebenaran.
+2. **`Portgames`** masih memuat `50000-65535` dan `5224-5241` (menangkap TCP 5228/FCM) — lihat saran 3.
+3. **Core asli belum diuji di lingkungan ini** (tidak ada binary `mihomo`). Menu 7 → 2 menjalankan `mihomo -t` otomatis bila core ada di mesinmu; hasilnya belum pernah diverifikasi terhadap Nikki/OpenClash sungguhan. `.mrs` bertipe `ipcidr` juga belum diuji dengan file asli (domain sudah).
+4. Saran 2 (overlay platform sebagai file), 4 (mode non-interaktif), dan CI belum dikerjakan.
+
+**Susulan (2026-11-18) — menu DNS & Nameserver.** Opsi "Custom manual" dulu hanya menerima URL DoH dan hanya menulis ke `nameserver`. Sekarang: preset dengan pilihan DoH/DoT/DoQ, custom bebas format (IP, DoH, DoH3, DoT, DoQ, UDP/TCP, `system`, `dhcp://`, akhiran `#…`) dengan validasi per entri, pilihan field target (`nameserver`, `proxy-server-nameserver`, `default-nameserver`, `direct-nameserver`, `fallback` bila ada), mode ganti/tambah, preview diff, verifikasi baca-ulang, dan reset ke master. `default-nameserver` non-IP ditolak. Aturan "harus IP" dan "DoH/DoT semua di proxy-server-nameserver berisiko" bersumber dari temuan di bagian 5 dan perilaku Mihomo yang diketahui; belum diuji di core asli.
+
+**Preset BebasDNS (2026-11-18).** Ditambahkan dari <https://github.com/bebasid/bebasdns> (4 varian, DoH+DoT; endpoint diambil dari README repo tersebut). Tidak ada DoQ dan tidak ada IP polos publik (plain DNS hanya untuk range IP terdaftar), sehingga field berbasis IP memakai 1.1.1.1/8.8.8.8. Endpoint belum diuji koneksinya dari sandbox ini.
+
+**Target lolos dnsleak + profil ISP (2026-11-18, template v0.5).**
+- DNS default: `nameserver` BebasDNS (DoH), `fallback` Cloudflare + Google (DoH), `fallback-filter.geoip: false`. v0.4 tidak ditimpa.
+- Dasar: dokumentasi Mihomo menyebut `fallback` di-query bersamaan dengan `nameserver`, sehingga semua resolver di kedua list harus non-ISP. Perilaku `geoip: false` **tidak terdokumentasi di sumber yang bisa saya baca** (default `geoip: true`, kode `CN`); dipakai karena filter CN tidak relevan di Indonesia — **belum diuji di core asli**.
+- **XL Axiata:** `112.215.203.254` disuntik script (bukan di template) ke `default-nameserver` + `proxy-server-nameserver` hanya untuk Nikki/OpenClash, atas permintaan pemilik proyek. Pilihan field ini adalah **asumsi saya**: template v0.2 menaruhnya di `default-nameserver` dan `fallback`, tapi `fallback` ikut menjawab query domain biasa, jadi di v0.5 dikecualikan secara default agar dnsleak bersih. Kalau di lapangan tunneling XL ternyata butuh `fallback`, aktifkan lewat menu (konsekuensi: DNS XL terlihat di dnsleak).
+- Alat baru: audit DNS leak statis (`dns_leak_audit`) di Misc → Config Tester; validator memperingatkan `fallback` tanpa `fallback-filter`. Ini analisis config, **bukan** pengganti dnsleaktest.com dari perangkat.
+- Nikki/OpenClash umumnya menimpa DNS dari setting LuCI; config ini hanya default.

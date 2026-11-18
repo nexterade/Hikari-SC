@@ -1,4 +1,4 @@
-# SmartMode — policy diatur di group "✨ SMART ROUTING" (default Direct)
+# SmartMode — policy diatur di group "🌳 SMART ROUTING" (default Direct)
 # [v3] rule redundan dibuang (18) -> hasil routing identik, list lebih ringan.
 # [v3] Inject ada PALING ATAS di profile, jadi entri gemini/aistudio/generativelanguage
 #      (ketimpa google.com di Inject, nggak pernah jalan) dibuang dari sini.

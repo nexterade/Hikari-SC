@@ -1,6 +1,6 @@
 # =====================================================
 # WifiClients — trafik dari koneksi WiFi (dicocokin lewat IP SUMBER)
-# Dipakai: rules -> RULE-SET,WifiClients,📶 WIFI
+# Dipakai: rules -> RULE-SET,WifiClients,🍪 WIFI
 #
 # Cara kerja: koneksi dari WiFi punya IP sumber LAN (192.168.x.x), sedangkan
 # data seluler operator biasanya 10.x / 100.64.x / IP publik.

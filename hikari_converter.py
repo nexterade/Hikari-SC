@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-HIKARI SUBCLASH OFFLINE ♥️  v2
+HIKARI /.CLASH — CONVERTER  v3
 URI <-> Clash (Mihomo) converter + generator config untuk Box / Nikki / OpenClash.
+(sebelumnya "Hikari Subclash" / Hikari-SC)
 """
 
 import base64
@@ -18,6 +19,8 @@ import time
 import unicodedata
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
+from banner import banner as _show_banner
+
 try:
     import yaml
 except ImportError:
@@ -26,20 +29,24 @@ except ImportError:
 
 # ---------- PATH CONFIG (semua relatif ke lokasi script, bukan cwd) ----------
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.join(SCRIPT_DIR, "Hasil")
+if SCRIPT_DIR not in sys.path:          # supaya banner.py / mrs_codec.py / nodetest.py / routetest.py ketemu
+    sys.path.insert(0, SCRIPT_DIR)
+
+BASE_DIR = os.path.join(SCRIPT_DIR, "hasil")
 RULESET_SOURCE = os.path.join(SCRIPT_DIR, "ruleset")
-TEMPLATE_PATH = os.path.join(SCRIPT_DIR, "template.yaml")   # working copy (boleh diedit lewat menu)
-TEMPLATE_GLOB = "config-template-v*.yaml"                   # master; dipakai kalau template.yaml belum ada
+TEMPLATE_DIR = os.path.join(SCRIPT_DIR, "template")
+TEMPLATE_PATH = os.path.join(TEMPLATE_DIR, "template.yaml")  # working copy (boleh diedit lewat menu)
+TEMPLATE_GLOB = "config_v*.yaml"                             # master di template/; dipakai kalau template.yaml belum ada
 
 # node dari link biasanya pakai bug-host/SNI custom -> cert tidak cocok.
 # Kalau link eksplisit bilang allowInsecure=0 maka dihormati.
 DEFAULT_SKIP_CERT_VERIFY = True
 
 EMOJI_PATH = os.path.join(SCRIPT_DIR, "emoji.json")        # daftar emoji nama node (bisa diedit lewat menu)
-# Sengaja tanpa 🦈 🐬 🪼 🍋 🌳 🧩 (sudah dipakai nama group di template)
-DEFAULT_EMOJIS = ["🦊", "🐼", "🐯", "🦁", "🐨", "🐸", "🐵", "🐧", "🦉", "🦋",
-                  "🐳", "🐙", "🦄", "🐲", "🦜", "🐢", "🦎", "🐝", "🐞", "🦩",
-                  "🦚", "🦦", "🦥", "🐰", "🐻", "🐹", "🐱", "🐶", "🦔", "🦒"]
+# Daftar bawaan = isi emoji.json bawaan repo (dipakai kalau file hilang / rusak / di-Reset lewat menu).
+# Sengaja tanpa emoji yang dipakai nama group di template (🧩 🛸 👒 🌳 💤 💕 🍪 🪼 🎮 ✂️ 🐬).
+DEFAULT_EMOJIS = ["🦊", "🎿", "💟", "🩻", "💭", "🔮", "🐠", "🍂", "🐣", "🧢", "🪭",
+                  "🍞", "☕", "🧊", "🍕", "🍟", "🛋️", "🏙️", "🌃", "🌠", "🌌", "⛱️"]
 
 NIKKI_RUN_DIR = "/etc/nikki/run"
 WIFI_PROVIDER = "WifiClients"
@@ -67,6 +74,7 @@ BOX_TOP_LEVEL = {
     "find-process-mode": "always",              # dashboard > Connections nampilin package app
     "geodata-mode": True,
     "experimental": {"quic-go-disable-gso": True},
+    "external-ui": "./dashboard",               # folder dashboard dibawa modul Box (bukan bagian repo ini)
 }
 BOX_DNS_LISTEN = "0.0.0.0:1053"                 # Box tproxy ngarahin DNS ke port ini
 BOX_TUN = {                                     # TUN dikelola Box (settings.ini) -> default off
@@ -76,6 +84,49 @@ BOX_TUN = {                                     # TUN dikelola Box (settings.ini
     "auto-detect-interface": True,
     "include-android-user": [0, 10, 999], "exclude-package": [], "include-package": [],
 }
+
+
+# ---------- Pengaturan pengguna (settings.json, dibuat saat dibutuhkan) ----------
+SETTINGS_PATH = os.path.join(SCRIPT_DIR, "settings.json")
+
+# Profil ISP: DNS milik ISP yang HARUS ada supaya tunneling jalan di jaringan tertentu.
+# XL Axiata: 112.215.203.254 (dulu ada di default-nameserver & fallback template v0.2).
+ISP_PROFILES = {
+    "none": {"label": "Umum (tanpa DNS ISP)", "ips": [], "fields": []},
+    "xl":   {"label": "XL Axiata", "ips": ["112.215.203.254"],
+             "fields": ["default-nameserver", "proxy-server-nameserver"]},
+}
+ISP_FIELD_CHOICES = ["default-nameserver", "proxy-server-nameserver", "direct-nameserver", "fallback"]
+ISP_PLATFORMS = ("nikki", "openclash")      # profil ISP hanya disuntik ke platform ini
+
+
+def load_settings():
+    """{'isp': id, 'isp_fields': [...]} dari settings.json; nilai tidak valid -> default."""
+    cfg = {"isp": "none", "isp_fields": []}
+    try:
+        data = json.loads(read_text(SETTINGS_PATH))
+    except (OSError, ValueError):
+        return cfg
+    if isinstance(data, dict):
+        if data.get("isp") in ISP_PROFILES:
+            cfg["isp"] = data["isp"]
+        fl = data.get("isp_fields")
+        if isinstance(fl, list):
+            cfg["isp_fields"] = [f for f in fl if f in ISP_FIELD_CHOICES]
+    return cfg
+
+
+def save_settings(cfg):
+    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+
+
+def isp_fields_for(pid):
+    st = load_settings()
+    if st["isp"] == pid and st["isp_fields"]:
+        return st["isp_fields"]
+    return list(ISP_PROFILES[pid]["fields"])
 
 
 # ---------- ANSI / Style ----------
@@ -107,10 +158,10 @@ def section(title, width=50):
     print(C.GRAY + "─" * left + C.RESET + C.BOLD + C.WHITE + t + C.RESET + C.GRAY + "─" * right + C.RESET)
 
 
-def banner():
-    print(f"\n  {C.BOLD}{C.MAGENTA}HIKARI SUBCLASH{C.RESET}")
-    print(f"  {C.DIM}VLESS · VMess · Trojan  ↔  Mihomo / Clash Meta{C.RESET}")
-    print(sep(50, C.MAGENTA) + "\n")
+def banner(mode="CONVERTER"):
+    """Banner Hikari /.CLASH (definisi visual ada di banner.py)."""
+    _show_banner(mode=mode)
+    print()
 
 
 def spinner(msg, duration=0.6):
@@ -306,19 +357,40 @@ def convert_line(line):
     raise ValueError("bukan vless/vmess/trojan")
 
 
+EMOJI_WARNING = ""      # diisi load_emoji_cfg() kalau emoji.json bermasalah; ditampilkan di startup & Check Status
+
+
 def load_emoji_cfg():
-    """{'enabled': bool, 'emojis': [str]} dari emoji.json; fallback ke default kalau tidak ada/rusak."""
+    """{'enabled': bool, 'emojis': [str]} dari emoji.json.
+    File tidak ada -> default. JSON rusak -> coba perbaiki koma berlebih (trailing comma), kalau tetap gagal
+    pakai default; keduanya meninggalkan pesan di EMOJI_WARNING (tidak lagi diam-diam)."""
+    global EMOJI_WARNING
+    EMOJI_WARNING = ""
     cfg = {"enabled": True, "emojis": list(DEFAULT_EMOJIS)}
     try:
-        with open(EMOJI_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data.get("enabled"), bool):
-            cfg["enabled"] = data["enabled"]
-        items = [e.strip() for e in data.get("emojis", []) if isinstance(e, str) and e.strip()]
-        if items:
-            cfg["emojis"] = list(dict.fromkeys(items))
-    except (OSError, ValueError, AttributeError):
-        pass
+        text = read_text(EMOJI_PATH)
+    except OSError:
+        return cfg
+    try:
+        data = json.loads(text)
+    except ValueError as e:
+        try:
+            data = json.loads(re.sub(r",(\s*[\]}])", r"\1", text))
+            EMOJI_WARNING = f"emoji.json tidak valid ({e}); koma berlebih diabaikan — perbaiki filenya atau simpan ulang lewat menu"
+        except ValueError:
+            EMOJI_WARNING = f"emoji.json rusak ({e}); memakai daftar bawaan"
+            return cfg
+    if not isinstance(data, dict):
+        EMOJI_WARNING = "emoji.json harus berupa objek {\"enabled\": ..., \"emojis\": [...]}; memakai daftar bawaan"
+        return cfg
+    if isinstance(data.get("enabled"), bool):
+        cfg["enabled"] = data["enabled"]
+    emojis = data.get("emojis", [])
+    items = [e.strip() for e in emojis if isinstance(e, str) and e.strip()] if isinstance(emojis, list) else []
+    if items:
+        cfg["emojis"] = list(dict.fromkeys(items))
+    else:
+        EMOJI_WARNING = EMOJI_WARNING or "emoji.json: daftar 'emojis' kosong/tidak valid; memakai daftar bawaan"
     return cfg
 
 
@@ -474,11 +546,11 @@ def _ver_key(path):
 
 
 def list_master_templates():
-    return sorted(glob.glob(os.path.join(SCRIPT_DIR, TEMPLATE_GLOB)), key=_ver_key)
+    return sorted(glob.glob(os.path.join(TEMPLATE_DIR, TEMPLATE_GLOB)), key=_ver_key)
 
 
 def find_template():
-    """template.yaml (working copy) > config-template-vX.Y.yaml terbaru."""
+    """template/template.yaml (working copy) > template/config_vX.Y.yaml terbaru."""
     if os.path.isfile(TEMPLATE_PATH):
         return TEMPLATE_PATH
     masters = list_master_templates()
@@ -486,12 +558,13 @@ def find_template():
 
 
 def ensure_working_template():
-    """Edit selalu dilakukan di template.yaml; master config-template-v*.yaml dibiarkan utuh."""
+    """Edit selalu dilakukan di template/template.yaml; master template/config_v*.yaml dibiarkan utuh."""
     if os.path.isfile(TEMPLATE_PATH):
         return TEMPLATE_PATH
     src = find_template()
     if not src:
         return None
+    os.makedirs(TEMPLATE_DIR, exist_ok=True)
     shutil.copyfile(src, TEMPLATE_PATH)
     return TEMPLATE_PATH
 
@@ -511,11 +584,19 @@ def backup_file(path):
 def load_template_cfg(path=None):
     path = path or find_template()
     if not path:
-        raise FileNotFoundError("template tidak ditemukan (template.yaml / config-template-v*.yaml)")
+        raise FileNotFoundError("template tidak ditemukan (template/template.yaml / template/config_v*.yaml)")
     cfg = yaml.safe_load(read_text(path))
     if not isinstance(cfg, dict):
         raise ValueError("template bukan YAML mapping")
     return cfg
+
+
+def _template_secret():
+    """Secret yang tertulis di template aktif ('hikari' secara default). '' kalau kosong / template tidak terbaca."""
+    try:
+        return str(load_template_cfg().get("secret") or "")
+    except Exception:
+        return ""
 
 
 def reserved_names():
@@ -567,14 +648,14 @@ def block_set_list(content, block, key, items):
         if not m.group(2):
             while j < e and re.match(r"^\s*-\s", lines[j]):
                 j += 1
-        lines[i:j] = [f"{indent}{key}:"] + [f"{indent}  - {x}" for x in items]
+        lines[i:j] = [f"{indent}{key}:"] + [f"{indent}  - {_yaml_item(x)}" for x in items]
         return "\n".join(lines), True
     # key belum ada -> sisipkan di akhir blok
     last = e
     while last > s + 1 and not lines[last - 1].strip():
         last -= 1
     child_indent = next((re.match(r"^(\s+)\S", l).group(1) for l in lines[s + 1:e] if l.strip() and not l.strip().startswith("#")), "  ")
-    lines[last:last] = [f"{child_indent}{key}:"] + [f"{child_indent}  - {x}" for x in items]
+    lines[last:last] = [f"{child_indent}{key}:"] + [f"{child_indent}  - {_yaml_item(x)}" for x in items]
     return "\n".join(lines), True
 
 
@@ -623,7 +704,7 @@ def _drop_wifi(cfg):
     return bool(dropped_groups)
 
 
-def build_config(tpl_text, platform, provider_mode="template", secret_mode="template"):
+def build_config(tpl_text, platform, provider_mode="template", secret_mode="template", isp=None):
     """Return (cfg_dict, notes). provider_mode: 'template' | 'offline' (http -> file lokal). secret_mode: 'template' (apa adanya, boleh kosong) | 'random'."""
     cfg = yaml.safe_load(tpl_text)
     if not isinstance(cfg, dict):
@@ -663,14 +744,39 @@ def build_config(tpl_text, platform, provider_mode="template", secret_mode="temp
     if secret_mode == "random":
         cfg["secret"] = secrets.token_urlsafe(9)
         notes.append("secret dashboard dibuat acak")
+
+    isp = isp or load_settings()["isp"]
+    if platform in ISP_PLATFORMS and isp != "none":
+        notes += apply_isp_profile(cfg, isp)
     return cfg, notes
+
+
+def apply_isp_profile(cfg, pid):
+    """Tambahkan DNS ISP (mis. XL 112.215.203.254) ke field dns terpilih. Return list catatan."""
+    prof, notes = ISP_PROFILES[pid], []
+    dns = cfg.get("dns")
+    if not isinstance(dns, dict) or not prof["ips"]:
+        return notes
+    done = []
+    for field in isp_fields_for(pid):
+        if field == "fallback" and not dns.get("fallback"):
+            notes.append("profil ISP: fallback tidak ada di template, dilewati")
+            continue
+        cur = [str(x) for x in (dns.get(field) or [])]
+        add = [ip for ip in prof["ips"] if ip not in cur]
+        if add:
+            dns[field] = cur + add
+        done.append(field)
+    if done:
+        notes.append(f"profil ISP {prof['label']}: {', '.join(prof['ips'])} ditambahkan ke dns.{', dns.'.join(done)}")
+    return notes
 
 
 def render_config(cfg, platform, version_hint=""):
     P = PLATFORMS[platform]
     header = (
         "# =====================================================\n"
-        f"# HIKARI — config untuk {P['label']}\n"
+        f"# HIKARI /.CLASH — config untuk {P['label']}\n"
         f"# Dibuat : {time.strftime('%Y-%m-%d %H:%M:%S')} oleh hikari_converter.py {version_hint}\n"
         "# File ini hasil generate: edit template-nya, lalu generate ulang.\n"
         "# =====================================================\n\n"
@@ -785,6 +891,8 @@ def validate_config(cfg, platform, out_dir=None):
     psn = dns.get("proxy-server-nameserver") or []
     if psn and all("://" in str(x) for x in psn):
         W("proxy-server-nameserver DoH semua: kalau ISP me-reset DoH, domain server proxy tidak bisa di-resolve (semua node timeout)")
+    if dns.get("fallback") and (dns.get("fallback-filter") or {}).get("geoip") is not False:
+        W("dns.fallback tanpa fallback-filter.geoip: false — filter bawaan Mihomo (geoip CN) tidak relevan di luar China dan membuat urutan nameserver→fallback sulit diprediksi")
     plain = [x for x in (dns.get("nameserver") or []) + (dns.get("fallback") or [])
              if isinstance(x, str) and "://" not in x]
     if plain:
@@ -812,6 +920,37 @@ def validate_config(cfg, platform, out_dir=None):
     return issues
 
 
+def dns_leak_audit(cfg, platform=None):
+    """Audit STATIS sumber kebocoran DNS di config. Return list[(level, pesan)]; level LEAK | WARN | INFO.
+    Bukan jaminan: tes sebenarnya tetap dnsleaktest.com / bash.ws dari perangkat."""
+    out, dns = [], cfg.get("dns") or {}
+    isp_ips = {ip for pr in ISP_PROFILES.values() for ip in pr["ips"]}
+    if not dns.get("enable", True):
+        out.append(("WARN", "dns.enable mati: query DNS tidak ditangani Mihomo"))
+    if dns.get("enhanced-mode") != "fake-ip":
+        out.append(("WARN", "enhanced-mode bukan fake-ip: domain di-resolve lokal sebelum dikirim ke proxy"))
+    if not dns.get("respect-rules"):
+        out.append(("WARN", "respect-rules mati: query nameserver tidak mengikuti rule (bisa keluar lewat jalur langsung)"))
+    if dns.get("ipv6") or cfg.get("ipv6"):
+        out.append(("WARN", "ipv6 aktif: pastikan resolver/jalur IPv6 juga lewat proxy"))
+    if not dns.get("nameserver"):
+        out.append(("WARN", "nameserver kosong"))
+    for key in ("nameserver", "fallback"):
+        for x in dns.get(key) or []:
+            v, kind, is_ip, e = parse_dns_entry(x)
+            host = re.sub(r"^[a-z0-9]+://", "", str(x)).split("#")[0].split("/")[0].rsplit(":", 1)[0] if e is None else str(x)
+            if host in isp_ips:
+                out.append(("LEAK", f"{key}: {x} adalah DNS ISP — akan muncul di dnsleak test"))
+            elif e is None and kind not in SECURE_KINDS:
+                out.append(("WARN", f"{key}: {x} tidak terenkripsi (aman dari ISP hanya selama respect-rules aktif & lewat proxy)"))
+    direct_plain = [x for x in dns.get("direct-nameserver") or [] if "://" not in str(x)]
+    if direct_plain:
+        out.append(("INFO", f"direct-nameserver polos ({', '.join(map(str, direct_plain))}) — hanya untuk domain DIRECT, bukan domain yang lewat proxy"))
+    if platform in ISP_PLATFORMS:
+        out.append(("INFO", "Nikki/OpenClash biasanya menimpa DNS dari setting LuCI-nya — pastikan di sana juga tidak memakai DNS ISP"))
+    return out
+
+
 def print_issues(issues):
     if not issues:
         ok("Validasi: tidak ada masalah.")
@@ -823,6 +962,50 @@ def print_issues(issues):
 # =====================================================================
 #  File operations
 # =====================================================================
+def migrate_legacy_layout():
+    """Rapikan layout lama: Hasil/ -> hasil/, template.yaml (root) -> template/template.yaml. Return list pesan."""
+    notes = []
+    try:
+        names = os.listdir(SCRIPT_DIR)
+    except OSError:
+        return notes
+    old_out = os.path.join(SCRIPT_DIR, "Hasil")
+    if "Hasil" in names:
+        if "hasil" not in names:
+            try:
+                os.rename(old_out, BASE_DIR)
+                notes.append("folder Hasil/ dipindah jadi hasil/")
+            except OSError as e:
+                notes.append(f"gagal memindah Hasil/ -> hasil/: {e}")
+        else:
+            notes.append("Hasil/ dan hasil/ sama-sama ada; yang dipakai hasil/ (Hasil/ lama bisa dihapus manual)")
+    old_tpl = os.path.join(SCRIPT_DIR, "template.yaml")
+    if os.path.isfile(old_tpl) and not os.path.exists(TEMPLATE_PATH):
+        try:
+            os.makedirs(TEMPLATE_DIR, exist_ok=True)
+            shutil.move(old_tpl, TEMPLATE_PATH)
+            if os.path.isfile(old_tpl + ".bak"):
+                shutil.move(old_tpl + ".bak", TEMPLATE_PATH + ".bak")
+            notes.append("template.yaml dipindah ke template/template.yaml")
+        except OSError as e:
+            notes.append(f"gagal memindah template.yaml: {e}")
+    return notes
+
+
+def template_version(path):
+    """'0.4' dari penanda '# template-version:' atau nama file config_v0.4.yaml; None kalau tidak ada."""
+    if not path:
+        return None
+    try:
+        m = re.search(r"^#\s*template-version:\s*([0-9.]+)", read_text(path), re.M)
+    except OSError:
+        return None
+    if m:
+        return m.group(1)
+    m = re.search(r"config_v([0-9.]+)\.yaml$", os.path.basename(path))
+    return m.group(1) if m else None
+
+
 def prepare_dirs():
     os.makedirs(BASE_DIR, exist_ok=True)
 
@@ -842,11 +1025,11 @@ def save_proxy_yaml(proxies, path):
         f.write(dump_yaml({"proxies": proxies}))
 
 
-def setup_full_config(proxies, target_name, platform, provider_mode="template", write_mode="replace", secret_mode="template"):
+def setup_full_config(proxies, target_name, platform, provider_mode="template", write_mode="replace", secret_mode="template", isp=None):
     """Return (out_dir, notes, issues, error)."""
     tpl = find_template()
     if not tpl:
-        return None, [], [], "template tidak ditemukan (template.yaml / config-template-v*.yaml)"
+        return None, [], [], "template tidak ditemukan (template/template.yaml / template/config_v*.yaml)"
     if not os.path.isdir(RULESET_SOURCE):
         return None, [], [], f"folder 'ruleset' tidak ditemukan di samping script ({RULESET_SOURCE})"
 
@@ -855,7 +1038,7 @@ def setup_full_config(proxies, target_name, platform, provider_mode="template", 
     proxy_dir = os.path.join(out_dir, P["proxy_dir"])
     try:
         os.makedirs(proxy_dir, exist_ok=True)
-        cfg, notes = build_config(read_text(tpl), platform, provider_mode, secret_mode)
+        cfg, notes = build_config(read_text(tpl), platform, provider_mode, secret_mode, isp)
 
         # node: dedupe terhadap nama bawaan template (+ node lama kalau mode append)
         target_path = os.path.join(proxy_dir, target_name)
@@ -874,7 +1057,7 @@ def setup_full_config(proxies, target_name, platform, provider_mode="template", 
         shutil.copytree(RULESET_SOURCE, target_rules)
 
         with open(os.path.join(out_dir, "config.yaml"), "w", encoding="utf-8") as f:
-            f.write(render_config(cfg, platform, "v2"))
+            f.write(render_config(cfg, platform, "v3"))
     except PermissionError as e:
         return None, [], [], f"PermissionError: {e}. Taruh folder script di /storage/emulated/0/ (bukan ~ Termux)."
     except (OSError, ValueError, yaml.YAMLError) as e:
@@ -1011,13 +1194,23 @@ def feature_convert_to_clash():
     provider_mode = "offline" if ask(f"{C.YELLOW}Pilih (1/2, Enter=1) ❯{C.RESET} ").strip() == "2" else "template"
 
     print(); section("Secret Dashboard")
-    print(f"  {C.CYAN}[1]{C.RESET} Kosong {C.DIM}(ikuti template){C.RESET}")
-    print(f"  {C.CYAN}[2]{C.RESET} Acak   {C.DIM}(dibuat otomatis, ditampilkan setelah generate){C.RESET}")
+    tpl_secret = _template_secret()
+    print(f"  {C.CYAN}[1]{C.RESET} Ikuti template {C.DIM}(sekarang: {tpl_secret or 'kosong'}){C.RESET}")
+    print(f"  {C.CYAN}[2]{C.RESET} Acak           {C.DIM}(dibuat otomatis, ditampilkan setelah generate){C.RESET}")
     secret_mode = "random" if ask(f"{C.YELLOW}Pilih (1/2, Enter=1) ❯{C.RESET} ").strip() == "2" else "template"
+
+    isp = None
+    if plat in ISP_PLATFORMS:
+        saved = load_settings()["isp"]
+        print(); section("Profil ISP")
+        print(f"  {C.CYAN}[1]{C.RESET} Umum {C.DIM}(tanpa DNS ISP){C.RESET}")
+        print(f"  {C.CYAN}[2]{C.RESET} XL Axiata {C.DIM}(wajib untuk tunneling di XL: +{', '.join(ISP_PROFILES['xl']['ips'])}){C.RESET}")
+        pick = ask(f"{C.YELLOW}Pilih (Enter = pengaturan tersimpan: {ISP_PROFILES[saved]['label']}) ❯{C.RESET} ").strip()
+        isp = {"1": "none", "2": "xl"}.get(pick)
 
     print()
     spinner("Membangun & memvalidasi config", 0.5)
-    out_dir, notes, issues, error = setup_full_config(proxies, target_name, plat, provider_mode, write_mode, secret_mode)
+    out_dir, notes, issues, error = setup_full_config(proxies, target_name, plat, provider_mode, write_mode, secret_mode, isp)
     if error:
         err(f"Gagal: {error}\n"); pause(); return
 
@@ -1060,7 +1253,7 @@ def feature_convert_to_clash():
 #  Feature: Clash -> URI
 # =====================================================================
 def provider_files():
-    """Semua file provider hasil generate (Hasil/full_config_*/proxy*/*.yaml)."""
+    """Semua file provider hasil generate (hasil/full_config_*/proxy*/*.yaml)."""
     found = []
     for pid, P in PLATFORMS.items():
         d = os.path.join(BASE_DIR, P["out"], P["proxy_dir"])
@@ -1072,7 +1265,7 @@ def provider_files():
 def feature_convert_to_uri():
     clear_screen(); banner(); section("Convert Clash ke URI")
     print(f"  {C.CYAN}[1]{C.RESET} Paste Teks YAML langsung")
-    print(f"  {C.CYAN}[2]{C.RESET} Baca dari file hasil generate (Hasil/full_config_*/)")
+    print(f"  {C.CYAN}[2]{C.RESET} Baca dari file hasil generate (hasil/full_config_*/)")
     print(f"  {C.CYAN}[0]{C.RESET} Batal")
     print(sep(50))
     pilihan = ask(f"{C.YELLOW}Pilih (1/2) ❯{C.RESET} ").strip()
@@ -1157,7 +1350,12 @@ def feature_check_status():
     tpl = find_template()
     print(f"  {C.DIM}Template & Ruleset:{C.RESET}")
     if tpl:
-        ok(f"template      : {C.GREEN}{os.path.basename(tpl)}{C.RESET}")
+        ok(f"template      : {C.GREEN}{os.path.relpath(tpl, SCRIPT_DIR)}{C.RESET} {C.DIM}(versi {template_version(tpl) or 'tidak diketahui'}){C.RESET}")
+        masters = list_master_templates()
+        if masters and os.path.abspath(tpl) == os.path.abspath(TEMPLATE_PATH):
+            latest = template_version(masters[-1])
+            if latest and template_version(tpl) != latest:
+                warn(f"template.yaml (salinan kerja) belum sama dengan master terbaru v{latest} — pakai Edit Configuration → Ganti File Template kalau mau memperbarui")
         try:
             cfg = load_template_cfg(tpl)
             print(f"    - Mixed port : {C.CYAN}{cfg.get('mixed-port', '-')}{C.RESET}")
@@ -1168,7 +1366,10 @@ def feature_check_status():
     else:
         err("template      : tidak ada")
     ecfg = load_emoji_cfg()
+    ok(f"profil ISP    : {C.GREEN}{ISP_PROFILES[load_settings()['isp']]['label']}{C.RESET}")
     ok(f"emoji node    : {C.GREEN}{'ON' if ecfg['enabled'] else 'OFF'}{C.RESET} ({len(ecfg['emojis'])} emoji)")
+    if EMOJI_WARNING:
+        warn(EMOJI_WARNING)
     n_rs = len(os.listdir(RULESET_SOURCE)) if os.path.isdir(RULESET_SOURCE) else 0
     (ok(f"folder ruleset: {C.GREEN}{n_rs} file{C.RESET}") if n_rs else err("folder ruleset: tidak ada"))
 
@@ -1217,83 +1418,425 @@ def feature_validate():
 
 
 # =====================================================================
-#  Feature: DNS
+#  Feature: DNS & Nameserver
 # =====================================================================
+# Tiap preset: protokol terenkripsi untuk nameserver/fallback + IP polos untuk field yang butuh IP
+# (default-nameserver WAJIB IP; proxy/direct-nameserver sebaiknya IP polos).
 DNS_PRESETS = {
-    "1": ("Cloudflare + Google (DoH)", ["https://1.1.1.1/dns-query", "https://dns.google/dns-query"], ["1.1.1.1", "8.8.8.8"]),
-    "2": ("Quad9 Unsecured (tanpa filter)", ["https://dns10.quad9.net/dns-query"], ["9.9.9.10", "149.112.112.10"]),
-    "3": ("NextDNS (Custom ID)", None, ["1.1.1.1", "8.8.8.8"]),
-    "4": ("AdGuard DNS (filter iklan)", ["https://dns.adguard-dns.com/dns-query"], ["94.140.14.14", "94.140.15.15"]),
-    "5": ("Custom manual", None, ["1.1.1.1", "8.8.8.8"]),
+    # Sumber: https://github.com/bebasid/bebasdns (MIT). Hanya DoH & DoT; tidak ada DoQ.
+    "1": {"label": "BebasDNS (BebasID, Indonesia) — default",
+          "fallback_secure": {"doh": ["https://1.1.1.1/dns-query", "https://dns.google/dns-query"],
+                              "dot": ["tls://1.1.1.1", "tls://dns.google"]},
+          "variants": {
+              "1": ("Bawaan",                       {"doh": ["https://dns.bebasid.com/dns-query"],
+                                                     "dot": ["tls://dns.bebasid.com"]}),
+              "2": ("Security (anti-malware)",      {"doh": ["https://security.dns.bebasid.com/dns-query"],
+                                                     "dot": ["tls://security.dns.bebasid.com"]}),
+              "3": ("Unfiltered (tanpa disaring)",  {"doh": ["https://unfiltered.dns.bebasid.com/dns-query"],
+                                                     "dot": ["tls://unfiltered.dns.bebasid.com"]}),
+              "4": ("Family (internet sehat)",      {"doh": ["https://family.dns.bebasid.com/dns-query"],
+                                                     "dot": ["tls://family.dns.bebasid.com"]}),
+          },
+          # BebasDNS tidak punya IP polos publik (plain DNS hanya untuk range IP terdaftar) -> IP bootstrap provider lain
+          "plain": ["1.1.1.1", "8.8.8.8"],
+          "plain_note": "BebasDNS tidak menyediakan IP polos publik → field IP (default/proxy-server/direct-nameserver) diisi 1.1.1.1 & 8.8.8.8. "
+                        "Kalau ISP-mu memblokir domain DoH/DoT BebasDNS, minta domain alternatif ke dukungan@bebasid.com."},
+    "2": {"label": "Cloudflare + Google",
+          "doh": ["https://1.1.1.1/dns-query", "https://dns.google/dns-query"],
+          "dot": ["tls://1.1.1.1", "tls://dns.google"],
+          "plain": ["1.1.1.1", "8.8.8.8"]},
+    "3": {"label": "Quad9 Unsecured (tanpa filter)",
+          "doh": ["https://dns10.quad9.net/dns-query"],
+          "dot": ["tls://dns10.quad9.net"],
+          "plain": ["9.9.9.10", "149.112.112.10"]},
+    "4": {"label": "NextDNS (pakai ID sendiri)", "nextdns": True,
+          "plain": ["1.1.1.1", "8.8.8.8"]},
+    "5": {"label": "AdGuard DNS (filter iklan)",
+          "doh": ["https://dns.adguard-dns.com/dns-query"],
+          "dot": ["tls://dns.adguard-dns.com"],
+          "doq": ["quic://dns.adguard-dns.com"],
+          "plain": ["94.140.14.14", "94.140.15.15"]},
 }
+PROTO_LABEL = {"doh": "DoH  (https://)", "dot": "DoT  (tls://)", "doq": "DoQ  (quic://)"}
+
+DNS_FIELDS = [
+    ("nameserver", "DNS utama (domain non-direct)", "enkripsi (DoH/DoT/DoQ) disarankan"),
+    ("proxy-server-nameserver", "resolve domain SERVER proxy", "IP polos disarankan (DoH sering di-reset ISP)"),
+    ("default-nameserver", "bootstrap untuk host DoH/DoT/DoQ", "WAJIB berupa IP"),
+    ("direct-nameserver", "DNS trafik DIRECT", "bebas"),
+    ("fallback", "DNS cadangan", "hanya muncul kalau ada di template"),
+]
+SECURE_KINDS = {"DoH", "DoH3", "DoT", "DoQ"}
+DNS_FORMAT_HELP = [
+    ("1.1.1.1  /  8.8.8.8:53  /  2606:4700:4700::1111", "UDP polos (IP, port opsional)"),
+    ("https://dns.google/dns-query", "DoH   (juga h3:// untuk DoH over HTTP/3)"),
+    ("tls://1.1.1.1  /  tls://dns.google:853", "DoT"),
+    ("quic://dns.adguard-dns.com", "DoQ"),
+    ("udp://1.1.1.1  /  tcp://1.1.1.1:53", "UDP / TCP eksplisit"),
+    ("system  /  dhcp://wlan0", "DNS bawaan sistem / dari DHCP interface"),
+    ("https://1.1.1.1/dns-query#🧩 Inject", "akhiran #… = lewat proxy-group / interface / parameter (mis. #h3=true)"),
+]
+
+_HOST_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?(\.[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*$")
+_SCHEME_KIND = {"https": "DoH", "h3": "DoH3", "tls": "DoT", "quic": "DoQ", "udp": "UDP", "tcp": "TCP"}
+
+
+def _is_ip_str(x):
+    import ipaddress
+    try:
+        ipaddress.ip_address(x)
+        return True
+    except ValueError:
+        return False
+
+
+def _split_host_port(hp):
+    """'host', 'host:port', '[v6]:port', 'v6' -> (host, is_ip, error)."""
+    if not hp:
+        return "", False, "host kosong"
+    host, port = hp, None
+    m = re.match(r"^\[([0-9A-Fa-f:.]+)\](?::(\d+))?$", hp)
+    if m:
+        host, port = m.group(1), m.group(2)
+    elif hp.count(":") == 1:
+        host, _, port = hp.partition(":")
+    elif hp.count(":") > 1 and not _is_ip_str(hp):
+        return "", False, "IPv6 tidak valid"
+    if port is not None and not (port.isdigit() and 1 <= int(port) <= 65535):
+        return "", False, f"port '{port}' tidak valid (1-65535)"
+    if _is_ip_str(host):
+        return host, True, None
+    if not _HOST_RE.match(host):
+        return "", False, f"host '{host}' tidak valid"
+    return host, False, None
+
+
+def parse_dns_entry(raw):
+    """Validasi satu entri nameserver Mihomo. Return (nilai_siap_pakai, jenis, host_adalah_ip, error|None)."""
+    s = str(raw).strip().strip("'\"")
+    if not s:
+        return None, None, False, "kosong"
+    base, hashmark, params = s.partition("#")
+    if re.search(r"\s", base):          # spasi hanya boleh di akhiran #… (mis. nama group "🧩 Inject")
+        return None, None, False, "tidak boleh ada spasi (pisahkan entri dengan koma atau baris baru)"
+    if hashmark and not params:
+        return None, None, False, "setelah '#' kosong"
+    suffix = hashmark + params
+    if base.lower() == "system":
+        return "system" + suffix, "system", False, None
+    m = re.match(r"^([A-Za-z0-9]+)://(.*)$", base)
+    if m:
+        scheme, rest = m.group(1).lower(), m.group(2)
+        if scheme == "dhcp":
+            return (f"dhcp://{rest}{suffix}", "DHCP", False, None) if rest else \
+                (None, None, False, "dhcp:// butuh nama interface atau 'system'")
+        if scheme not in _SCHEME_KIND:
+            return None, None, False, f"skema '{scheme}://' tidak dikenal (https, h3, tls, quic, udp, tcp, dhcp, system)"
+        hostport, slash, path = rest.partition("/")
+        host, is_ip, e = _split_host_port(hostport)
+        if e:
+            return None, None, False, e
+        if slash and scheme not in ("https", "h3"):
+            return None, None, False, f"path hanya untuk https:// / h3:// (bukan {scheme}://)"
+        return f"{scheme}://{hostport}{slash}{path}{suffix}", _SCHEME_KIND[scheme], is_ip, None
+    if "/" in base:
+        return None, None, False, "ada path tapi tanpa skema — maksudnya https://" + base + " ?"
+    host, is_ip, e = _split_host_port(base)
+    if e:
+        return None, None, False, e
+    return base + suffix, "UDP" if is_ip else "UDP (domain)", is_ip, None
+
+
+def check_dns_field(field, parsed):
+    """parsed: [(nilai, jenis, is_ip)] -> list[(level, pesan)] untuk field `field`."""
+    out = []
+    kinds = {k for _, k, _ in parsed}
+    if field == "default-nameserver":
+        for v, _, is_ip in parsed:
+            if not is_ip:
+                out.append(("ERR", f"default-nameserver harus IP, bukan '{v}'"))
+    elif field in ("nameserver", "fallback"):
+        plain = [v for v, k, _ in parsed if k not in SECURE_KINDS]
+        if plain:
+            out.append(("WARN", f"{field}: DNS tidak terenkripsi ({', '.join(plain)}) → bisa bocor ke ISP"))
+    elif field == "proxy-server-nameserver":
+        if parsed and kinds <= SECURE_KINDS:
+            out.append(("WARN", "proxy-server-nameserver terenkripsi semua: kalau ISP me-reset DoH/DoT, domain server proxy gagal resolve (semua node timeout)"))
+    return out
+
+
+def _yaml_item(x):
+    """Quote item kalau YAML akan menafsirkannya bukan sebagai string yang sama (mis. '[::1]:53', '#', ': ')."""
+    try:
+        if yaml.safe_load(x) == x:
+            return x
+    except yaml.YAMLError:
+        pass
+    return yaml_quote(x)
+
+
+def _dns_kind_tag(entry):
+    v, kind, is_ip, e = parse_dns_entry(entry)
+    return kind or "?"
+
+
+def _show_dns_state(dns):
+    print(f"  {C.DIM}DNS aktif di template:{C.RESET}")
+    for key, desc, _ in DNS_FIELDS:
+        vals = dns.get(key)
+        if vals is None and key == "fallback":
+            continue
+        print(f"  {C.CYAN}{key}{C.RESET} {C.DIM}— {desc}{C.RESET}")
+        if not vals:
+            print(f"      {C.DIM}(kosong){C.RESET}")
+        for v in vals or []:
+            print(f"      {v}  {C.DIM}[{_dns_kind_tag(v)}]{C.RESET}")
+
+
+def _pick_dns_fields(dns, default):
+    """Pilih field target (boleh banyak, mis. 1,3). Return list nama field / None."""
+    fields = [f for f in DNS_FIELDS if f[0] != "fallback" or "fallback" in dns]
+    print(); section("Terapkan ke field mana?")
+    for i, (key, desc, hint) in enumerate(fields, 1):
+        print(f"  {C.CYAN}[{i}]{C.RESET} {key:<24} {C.DIM}{desc} · {hint}{C.RESET}")
+    dflt = ",".join(str(i) for i, f in enumerate(fields, 1) if f[0] in default)
+    raw = ask(f"{C.YELLOW}Nomor, pisah koma (Enter={dflt or '-'}, 0=batal) ❯{C.RESET} ").strip() or dflt
+    if raw == "0":
+        return None
+    try:
+        idx = sorted({int(x) for x in raw.replace(" ", "").split(",") if x})
+        return [fields[i - 1][0] for i in idx if 1 <= i <= len(fields)] or None
+    except ValueError:
+        err("Input tidak valid."); time.sleep(1.2)
+        return None
+
+
+def _collect_custom_entries(field):
+    """Baca entri bebas format. Return list nilai valid (urut, unik) / None kalau batal."""
+    print(); section(f"Entri untuk {field}")
+    for ex, desc in DNS_FORMAT_HELP:
+        print(f"  {C.CYAN}{ex}{C.RESET}\n      {C.DIM}{desc}{C.RESET}")
+    print(f"  {C.DIM}Satu per baris atau pisah koma/spasi. Enter kosong = selesai, 'batal' = keluar.{C.RESET}")
+    got = []
+    while True:
+        line = ask(f"  {C.CYAN}❯{C.RESET} ").strip()
+        if not line:
+            break
+        if line.lower() == "batal":
+            return None
+        toks = []
+        for part in line.split(","):
+            part = part.strip()
+            toks += [part] if "#" in part else part.split()      # spasi memisahkan entri, kecuali di akhiran #…
+        for tok in toks:
+            v, kind, _, e = parse_dns_entry(tok)
+            if e:
+                err(f"{tok} → {e}")
+            elif v in got:
+                warn(f"{v} sudah ada, dilewati")
+            else:
+                got.append(v)
+                ok(f"{v}  {C.DIM}[{kind}]{C.RESET}")
+    return got
+
+
+def _apply_dns_changes(path, content, dns, changes):
+    """changes: {field: [entri]}. Preview → validasi → konfirmasi → tulis. Return True kalau tersimpan."""
+    print(); section("Ringkasan Perubahan")
+    blocking = False
+    for field, new in changes.items():
+        print(f"  {C.CYAN}{field}{C.RESET}")
+        for v in dns.get(field) or []:
+            print(f"    {C.RED}- {v}{C.RESET}")
+        for v in new:
+            print(f"    {C.GREEN}+ {v}{C.RESET}")
+        parsed = []
+        for v in new:
+            pv, kind, is_ip, e = parse_dns_entry(v)
+            parsed.append((pv, kind, is_ip))
+        for lvl, msg in check_dns_field(field, parsed):
+            (err if lvl == "ERR" else warn)(msg)
+            blocking |= lvl == "ERR"
+    if blocking:
+        err("Ada kesalahan di atas — perubahan dibatalkan."); pause(); return False
+    if ask(f"\n  Terapkan? (y/N) ❯ ").strip().lower() != "y":
+        return False
+    new_text = content
+    for field, new in changes.items():
+        new_text, found = block_set_list(new_text, "dns", field, new)
+        if not found:
+            err("Blok dns tidak ditemukan di template."); pause(); return False
+    try:
+        back = (yaml.safe_load(new_text) or {}).get("dns") or {}
+    except yaml.YAMLError as e:
+        err(f"Hasil edit tidak valid, dibatalkan: {e}"); pause(); return False
+    for field, new in changes.items():
+        if [str(x) for x in back.get(field) or []] != new:
+            err(f"Verifikasi gagal untuk {field} (hasil baca ulang tidak sama), dibatalkan."); pause(); return False
+    backup_file(path)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(new_text)
+    ok(f"DNS diterapkan ke {os.path.relpath(path, SCRIPT_DIR)} (backup: {os.path.basename(path)}.bak)")
+    print(f"  {C.DIM}Aktif saat generate Full Config berikutnya.{C.RESET}")
+    pause()
+    return True
+
+
+def _dns_preset_flow(path, content, dns):
+    print(); section("Preset Provider DNS")
+    for k, p in DNS_PRESETS.items():
+        print(f"  {C.CYAN}[{k}]{C.RESET} {p['label']}")
+    print(f"  {C.CYAN}[0]{C.RESET} Batal\n{sep(50)}")
+    k = ask(f"{C.YELLOW}Pilih ❯{C.RESET} ").strip()
+    if k not in DNS_PRESETS:
+        if k not in ("", "0"):
+            err("Pilihan tidak valid."); time.sleep(1.0)
+        return
+    p = DNS_PRESETS[k]
+    if p.get("variants"):
+        print(); section(f"Varian {p['label'].split(' (')[0]}")
+        for vk, (vlabel, _) in p["variants"].items():
+            print(f"  {C.CYAN}[{vk}]{C.RESET} {vlabel}")
+        vk = ask(f"{C.YELLOW}Pilih (Enter=1) ❯{C.RESET} ").strip() or "1"
+        if vk not in p["variants"]:
+            err("Pilihan tidak valid."); time.sleep(1.0); return
+        p = dict(p, **p["variants"][vk][1])
+    if p.get("nextdns"):
+        nid = ask("  NextDNS ID (kosong = tanpa ID) ❯ ").strip().strip("/")
+        if nid and not re.fullmatch(r"[A-Za-z0-9]+", nid):
+            err("ID NextDNS hanya huruf/angka."); time.sleep(1.2); return
+        suf = f"/{nid}" if nid else ""
+        p = dict(p, doh=[f"https://dns.nextdns.io{suf}"], dot=[f"tls://{nid + '.' if nid else ''}dns.nextdns.io"],
+                 doq=[f"quic://dns.nextdns.io{suf}"])
+    protos = [x for x in ("doh", "dot", "doq") if p.get(x)]
+    print(); section("Protokol (untuk nameserver / fallback)")
+    for i, x in enumerate(protos, 1):
+        print(f"  {C.CYAN}[{i}]{C.RESET} {PROTO_LABEL[x]}")
+    pr = ask(f"{C.YELLOW}Pilih (Enter=1) ❯{C.RESET} ").strip() or "1"
+    if not (pr.isdigit() and 1 <= int(pr) <= len(protos)):
+        err("Pilihan tidak valid."); time.sleep(1.0); return
+    secure, plain = p[protos[int(pr) - 1]], p["plain"]
+    print(f"\n  {C.DIM}Isi per field: nameserver/fallback ← {', '.join(secure)}")
+    print(f"  default/proxy-server/direct-nameserver ← IP polos {', '.join(plain)}{C.RESET}")
+    if p.get("plain_note"):
+        warn(p["plain_note"])
+    fb_secure = (p.get("fallback_secure") or {}).get(protos[int(pr) - 1], secure)
+    if p.get("fallback_secure") and "fallback" in dns:
+        print(f"  {C.DIM}fallback ← {', '.join(fb_secure)}  (jika DNS utama gagal){C.RESET}")
+    fields = _pick_dns_fields(dns, default={"nameserver", "fallback"} if p.get("fallback_secure") else {"nameserver"})
+    if not fields:
+        return
+    changes = {f: (secure if f == "nameserver" else fb_secure if f == "fallback" else plain) for f in fields}
+    _apply_dns_changes(path, content, dns, changes)
+
+
+def _dns_custom_flow(path, content, dns):
+    fields = _pick_dns_fields(dns, default={"nameserver"})
+    if not fields:
+        return
+    changes = {}
+    for field in fields:
+        entries = _collect_custom_entries(field)
+        if entries is None:
+            return
+        if not entries:
+            warn(f"{field}: tidak ada entri, dilewati."); continue
+        if dns.get(field):
+            print(f"  {C.CYAN}[1]{C.RESET} Ganti semua   {C.CYAN}[2]{C.RESET} Tambahkan ke yang lama  {C.DIM}({len(dns[field])} entri sekarang){C.RESET}")
+            if ask(f"{C.YELLOW}{field} (Enter=1) ❯{C.RESET} ").strip() == "2":
+                entries = list(dict.fromkeys([str(x) for x in dns[field]] + entries))
+        changes[field] = entries
+    if changes:
+        _apply_dns_changes(path, content, dns, changes)
+
+
+def _dns_isp_flow():
+    st = load_settings()
+    print(); section("Profil ISP")
+    print(f"  {C.DIM}Sekarang: {ISP_PROFILES[st['isp']]['label']}"
+          + (f" → {', '.join(st['isp_fields'] or ISP_PROFILES[st['isp']]['fields'])}" if st["isp"] != "none" else "") + C.RESET)
+    print(f"  {C.CYAN}[1]{C.RESET} Umum {C.DIM}(tanpa DNS ISP — paling aman untuk dnsleak){C.RESET}")
+    print(f"  {C.CYAN}[2]{C.RESET} XL Axiata {C.DIM}(+{', '.join(ISP_PROFILES['xl']['ips'])}){C.RESET}")
+    print(f"  {C.CYAN}[0]{C.RESET} Batal\n{sep(50)}")
+    pick = ask(f"{C.YELLOW}Pilih ❯{C.RESET} ").strip()
+    if pick not in ("1", "2"):
+        return
+    if pick == "1":
+        save_settings({"isp": "none", "isp_fields": []})
+        ok("Profil ISP: Umum."); time.sleep(1.0); return
+    prof = ISP_PROFILES["xl"]
+    cur = st["isp_fields"] if st["isp"] == "xl" and st["isp_fields"] else prof["fields"]
+    print(); section("IP XL ditambahkan ke field mana?")
+    for i, f in enumerate(ISP_FIELD_CHOICES, 1):
+        mark = "✓" if f in cur else " "
+        print(f"  {C.CYAN}[{i}]{C.RESET} [{mark}] {f}")
+    print(f"  {C.DIM}Default: default-nameserver + proxy-server-nameserver (hanya resolve host DoH & domain server proxy,")
+    print(f"  tidak melihat domain yang kamu buka → dnsleak tetap bersih). Template v0.2 dulu juga memakai fallback;")
+    print(f"  kalau tunneling masih gagal, tambahkan fallback — konsekuensinya DNS XL ikut terlihat di dnsleak.{C.RESET}")
+    raw = ask(f"{C.YELLOW}Nomor, pisah koma (Enter = default) ❯{C.RESET} ").strip()
+    fields = list(prof["fields"])
+    if raw:
+        try:
+            idx = sorted({int(x) for x in raw.replace(" ", "").split(",") if x})
+            fields = [ISP_FIELD_CHOICES[i - 1] for i in idx if 1 <= i <= len(ISP_FIELD_CHOICES)]
+        except ValueError:
+            err("Input tidak valid."); time.sleep(1.2); return
+    if not fields:
+        err("Pilih minimal satu field."); time.sleep(1.2); return
+    if "fallback" in fields:
+        warn("fallback berisi DNS XL (tidak terenkripsi): DNS ISP bisa muncul di dnsleak test.")
+    save_settings({"isp": "xl", "isp_fields": fields})
+    ok(f"Profil ISP: XL Axiata → {', '.join(fields)}")
+    print(f"  {C.DIM}Berlaku saat generate untuk Nikki & OpenClash (Box tidak diubah). Tersimpan di settings.json.{C.RESET}")
+    pause()
+
+
+def _dns_reset_flow(path, content, dns):
+    masters = list_master_templates()
+    if not masters:
+        err("Tidak ada template master."); time.sleep(1.2); return
+    try:
+        mdns = load_template_cfg(masters[-1]).get("dns") or {}
+    except Exception as e:
+        err(f"Master tidak terbaca: {e}"); time.sleep(1.2); return
+    changes = {k: [str(x) for x in mdns[k]] for k, _, _ in DNS_FIELDS
+               if mdns.get(k) and [str(x) for x in mdns[k]] != [str(x) for x in dns.get(k) or []]}
+    if not changes:
+        ok("DNS sudah sama dengan master."); time.sleep(1.2); return
+    print(f"  {C.DIM}Mengembalikan ke {os.path.basename(masters[-1])}{C.RESET}")
+    _apply_dns_changes(path, content, dns, changes)
 
 
 def feature_config_dns():
-    path = ensure_working_template()
-    if not path:
-        err("Template tidak ditemukan!"); time.sleep(1.5); return
-    content = read_text(path)
-    clear_screen(); banner(); section("Konfigurasi DNS")
-    try:
-        dns = (yaml.safe_load(content) or {}).get("dns") or {}
-    except yaml.YAMLError as e:
-        err(f"Template rusak: {e}"); pause(); return
-    print(f"  {C.DIM}DNS aktif di template:{C.RESET}")
-    for key in ("nameserver", "proxy-server-nameserver", "default-nameserver", "fallback"):
-        if dns.get(key):
-            print(f"  {C.CYAN}{key}{C.RESET}: {', '.join(map(str, dns[key]))}")
-    if any("://" not in str(x) for x in (dns.get("nameserver") or []) + (dns.get("fallback") or [])):
-        warn("Ada DNS polos (non-DoH) di nameserver/fallback → rawan bocor ke ISP.")
-
-    print(); section("Pilih Provider DNS")
-    for k, (label, _, _) in DNS_PRESETS.items():
-        print(f"  {C.CYAN}[{k}]{C.RESET} {label}")
-    print(f"  {C.CYAN}[0]{C.RESET} Batal\n{sep(50)}")
-    pilihan = ask(f"{C.YELLOW}Pilih (1-5) ❯{C.RESET} ").strip()
-    if pilihan == "0" or pilihan not in DNS_PRESETS:
-        if pilihan not in ("0", ""):
-            err("Pilihan tidak valid."); time.sleep(1.2)
-        return
-    _, dns_list, bootstrap = DNS_PRESETS[pilihan]
-    if pilihan == "3":
-        nid = ask("  NextDNS ID (kosong = default): ").strip()
-        dns_list = [f"https://dns.nextdns.io/{nid}" if nid else "https://dns.nextdns.io"]
-    elif pilihan == "5":
-        print(f"  {C.DIM}URL DoH (satu per baris, Enter kosong = selesai). Contoh: https://dns.example/dns-query{C.RESET}")
-        dns_list = []
-        while True:
-            u = ask(f"  {C.CYAN}URL ❯{C.RESET} ").strip()
-            if not u:
-                break
-            if not u.startswith(("https://", "tls://", "quic://")):
-                warn("Disarankan DoH/DoT/DoQ (https://, tls://, quic://) — IP polos bisa bocor ke ISP.")
-            dns_list.append(u)
-    if not dns_list:
-        err("Tidak ada DNS yang dipilih."); time.sleep(1.2); return
-
-    warn("proxy-server-nameserver sebaiknya DNS polos: DoH sering di-reset ISP -> domain server proxy gagal resolve.")
-    also_proxy = bool(dns.get("proxy-server-nameserver")) and \
-        ask("  Terapkan juga ke proxy-server-nameserver? (y/N) ❯ ").strip().lower() == "y"
-    change_boot = ask(f"  Ganti bootstrap default-nameserver → {', '.join(bootstrap)}? (y/N) ❯ ").strip().lower() == "y"
-
-    new = content
-    new, f1 = block_set_list(new, "dns", "nameserver", dns_list)
-    if also_proxy:
-        new, _ = block_set_list(new, "dns", "proxy-server-nameserver", dns_list)
-    if change_boot:
-        new, _ = block_set_list(new, "dns", "default-nameserver", bootstrap)
-    try:
-        yaml.safe_load(new)
-    except yaml.YAMLError as e:
-        err(f"Hasil edit tidak valid, dibatalkan: {e}"); pause(); return
-    if not f1:
-        err("Blok dns tidak ditemukan di template."); pause(); return
-    backup_file(path)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(new)
-    ok("DNS diterapkan ke template.yaml (backup: template.yaml.bak)")
-    print(f"  {C.DIM}Aktif saat generate Full Config berikutnya.{C.RESET}")
-    pause()
+    while True:
+        path = ensure_working_template()
+        if not path:
+            err("Template tidak ditemukan!"); time.sleep(1.5); return
+        content = read_text(path)
+        clear_screen(); banner(); section("DNS & Nameserver")
+        try:
+            dns = (yaml.safe_load(content) or {}).get("dns") or {}
+        except yaml.YAMLError as e:
+            err(f"Template rusak: {e}"); pause(); return
+        _show_dns_state(dns)
+        for key in ("nameserver", "fallback"):
+            if any("://" not in str(x) for x in dns.get(key) or []):
+                warn(f"Ada DNS polos (tanpa enkripsi) di {key} → rawan bocor ke ISP.")
+        print(); section("Menu")
+        print(f"  {C.CYAN}[1]{C.RESET} Preset provider   {C.DIM}(BebasDNS [default], Cloudflare/Google, Quad9, NextDNS, AdGuard · DoH/DoT/DoQ){C.RESET}")
+        print(f"  {C.CYAN}[2]{C.RESET} Custom manual     {C.DIM}(IP, DoH, DoT, DoQ, UDP/TCP, system, dhcp — per field){C.RESET}")
+        print(f"  {C.CYAN}[3]{C.RESET} Kembalikan ke master")
+        print(f"  {C.CYAN}[4]{C.RESET} Profil ISP         {C.DIM}(sekarang: {ISP_PROFILES[load_settings()['isp']]['label']}; XL Axiata → +112.215.203.254){C.RESET}")
+        print(f"  {C.CYAN}[0]{C.RESET} Kembali\n{sep(50)}")
+        pilih = ask(f"{C.YELLOW}Pilih ❯{C.RESET} ").strip()
+        if pilih == "0":
+            return
+        elif pilih == "1": _dns_preset_flow(path, content, dns)
+        elif pilih == "2": _dns_custom_flow(path, content, dns)
+        elif pilih == "3": _dns_reset_flow(path, content, dns)
+        elif pilih == "4": _dns_isp_flow()
+        else:
+            err("Pilihan tidak valid."); time.sleep(0.8)
 
 
 # =====================================================================
@@ -1363,7 +1906,7 @@ def feature_edit_config():
         clear_screen(); banner(); section("Edit Configuration")
         print(f"  {C.CYAN}[1]{C.RESET} Edit Port & Secret")
         print(f"  {C.CYAN}[2]{C.RESET} Ganti File Template")
-        print(f"  {C.CYAN}[3]{C.RESET} Konfigurasi DNS & Nameserver")
+        print(f"  {C.CYAN}[3]{C.RESET} DNS & Nameserver")
         print(f"  {C.CYAN}[4]{C.RESET} Emoji Node (daftar emoji nama)")
         print(f"  {C.CYAN}[0]{C.RESET} Kembali ke Menu Utama\n{sep(50)}")
         pilih = ask(f"{C.YELLOW}Pilih menu ❯{C.RESET} ").strip()
@@ -1489,6 +2032,434 @@ def feature_tools():
 
 
 # =====================================================================
+#  Feature: Miscellaneous (menu 7)
+# =====================================================================
+RULES_OUT_DIR = os.path.join(BASE_DIR, "rules")
+RULE_EXTS = (".mrs", ".yaml", ".yml", ".txt")
+
+
+def _import_tool(name):
+    try:
+        return __import__(name)
+    except Exception as e:
+        err(f"Modul {name}.py tidak bisa dimuat: {e}")
+        return None
+
+
+def _human_size(n):
+    return f"{n / 1024:.1f} KB" if n < 1024 * 1024 else f"{n / 1024 / 1024:.2f} MB"
+
+
+def _unique_dst(path):
+    """Jangan menimpa diam-diam: kalau sudah ada, tanya timpa atau pakai nama baru."""
+    if not os.path.exists(path):
+        return path
+    if ask(f"  {os.path.basename(path)} sudah ada. Timpa? (y/N) ❯ ").strip().lower() == "y":
+        return path
+    stem, ext = os.path.splitext(path)
+    i = 2
+    while os.path.exists(f"{stem}_{i}{ext}"):
+        i += 1
+    return f"{stem}_{i}{ext}"
+
+
+def _pick_file(files, prompt="Pilih nomor, atau ketik path file"):
+    """files: [(label, path)]. Return path / None (batal)."""
+    for i, (label, _) in enumerate(files, 1):
+        print(f"  {C.CYAN}[{i}]{C.RESET} {label}")
+    print(f"  {C.DIM}{prompt}. Enter = batal.{C.RESET}")
+    raw = ask(f"  {C.CYAN}❯{C.RESET} ").strip()
+    if not raw:
+        return None
+    if raw.isdigit() and 1 <= int(raw) <= len(files):
+        return files[int(raw) - 1][1]
+    path = os.path.expanduser(raw.strip("'\""))
+    if os.path.isfile(path):
+        return path
+    err("File tidak ditemukan."); time.sleep(1.2)
+    return None
+
+
+def _ruleset_files():
+    if not os.path.isdir(RULESET_SOURCE):
+        return []
+    out = []
+    for fn in sorted(os.listdir(RULESET_SOURCE)):
+        if fn.lower().endswith(RULE_EXTS):
+            fp = os.path.join(RULESET_SOURCE, fn)
+            out.append((f"{fn:<22} {C.DIM}{_human_size(os.path.getsize(fp))}{C.RESET}", fp))
+    return out
+
+
+def _print_convert_result(res):
+    arrow = ".mrs ➜ teks" if res["direction"] == "mrs->text" else "teks ➜ .mrs"
+    ok(f"{arrow}  |  behavior: {C.BOLD}{res['behavior']}{C.RESET}  |  {res['entries']:,} entri")
+    print(f"  {C.DIM}{res['dst']}  ({_human_size(os.path.getsize(res['dst']))}){C.RESET}")
+    for w in res["warnings"][:6]:
+        warn(w)
+    if len(res["warnings"]) > 6:
+        print(f"  {C.DIM}... +{len(res['warnings']) - 6} peringatan lain{C.RESET}")
+
+
+def _convert_one_rule(mrs):
+    print(); section("Pilih File Sumber")
+    src = _pick_file(_ruleset_files(), "Pilih nomor, atau ketik path .mrs / .yaml / .txt")
+    if not src:
+        return
+    os.makedirs(RULES_OUT_DIR, exist_ok=True)
+    stem = os.path.splitext(os.path.basename(src))[0]
+    try:
+        if src.lower().endswith(".mrs"):
+            print(f"  {C.CYAN}[1]{C.RESET} YAML (payload:)   {C.CYAN}[2]{C.RESET} TXT (satu entri per baris)")
+            as_text = ask(f"{C.YELLOW}Format keluaran (1/2, Enter=1) ❯{C.RESET} ").strip() == "2"
+            dst = _unique_dst(os.path.join(RULES_OUT_DIR, stem + (".txt" if as_text else ".yaml")))
+            res = mrs.convert_file(src, dst, text_out=as_text)
+        else:
+            with open(src, "r", encoding="utf-8") as f:
+                raw = mrs.parse_rule_text(f.read())
+            if not raw:
+                err("Tidak ada entri di file itu."); return
+            auto = mrs.detect_behavior(raw)
+            print(f"  {C.DIM}{len(raw):,} baris terbaca, terdeteksi behavior: {auto}{C.RESET}")
+            pick = ask(f"{C.YELLOW}Behavior (d=domain, i=ipcidr, Enter={auto}) ❯{C.RESET} ").strip().lower()
+            behavior = {"d": "domain", "i": "ipcidr"}.get(pick, auto)
+            dst = _unique_dst(os.path.join(RULES_OUT_DIR, stem + ".mrs"))
+            spinner("Membangun .mrs", 0.4)
+            res = mrs.convert_file(src, dst, behavior=behavior)
+            back = mrs.read_mrs_bytes(open(dst, "rb").read())      # baca ulang = cek file tidak rusak
+            if len(back["entries"]) != res["entries"]:
+                res["warnings"].append(f"cek baca-ulang: {len(back['entries']):,} entri terbaca vs {res['entries']:,} ditulis")
+        print(); _print_convert_result(res)
+    except mrs.ZstdUnavailable as e:
+        err(str(e))
+    except (mrs.MrsError, OSError, ValueError, yaml.YAMLError) as e:
+        err(f"Gagal: {e}")
+
+
+def _convert_all_mrs(mrs):
+    files = [(l, p) for l, p in _ruleset_files() if p.lower().endswith(".mrs")]
+    if not files:
+        warn("Tidak ada .mrs di ruleset/."); return
+    os.makedirs(RULES_OUT_DIR, exist_ok=True)
+    print(f"  {C.DIM}{len(files)} file .mrs → YAML di {RULES_OUT_DIR}{C.RESET}\n")
+    for _, p in files:
+        dst = os.path.join(RULES_OUT_DIR, os.path.splitext(os.path.basename(p))[0] + ".yaml")
+        try:
+            res = mrs.convert_file(p, dst)
+            ok(f"{os.path.basename(p):<20} → {res['entries']:,} entri ({res['behavior']})")
+        except mrs.ZstdUnavailable as e:
+            err(str(e)); return
+        except (mrs.MrsError, OSError, ValueError) as e:
+            err(f"{os.path.basename(p)}: {e}")
+
+
+def _info_mrs(mrs):
+    print(); section("Pilih File .mrs")
+    src = _pick_file([(l, p) for l, p in _ruleset_files() if p.lower().endswith(".mrs")],
+                     "Pilih nomor, atau ketik path .mrs")
+    if not src:
+        return
+    try:
+        i = mrs.mrs_info(src)
+        ok(f"behavior: {C.BOLD}{i['behavior']}{C.RESET}  |  entri: {i['entries']:,}  |  ukuran: {_human_size(i['size'])}")
+    except mrs.ZstdUnavailable as e:
+        err(str(e))
+    except (mrs.MrsError, OSError) as e:
+        err(f"Gagal: {e}")
+
+
+def feature_misc_rules():
+    mrs = _import_tool("mrs_codec")
+    if not mrs:
+        pause(); return
+    while True:
+        clear_screen(); banner("MISC"); section("Rule-Provider Converter")
+        be = mrs.backend_name()
+        print(f"  {C.DIM}zstd backend: {be or 'TIDAK ADA'}   |   output: {RULES_OUT_DIR}{C.RESET}")
+        if not be:
+            warn("Backend zstd belum ada, konversi .mrs tidak bisa jalan:\n" + mrs.INSTALL_HINT)
+        print(f"\n  {C.CYAN}[1]{C.RESET} Konversi satu file  {C.DIM}(.mrs ⇄ .yaml / .txt, arah otomatis dari ekstensi){C.RESET}")
+        print(f"  {C.CYAN}[2]{C.RESET} Semua .mrs di ruleset/ ➜ YAML")
+        print(f"  {C.CYAN}[3]{C.RESET} Info file .mrs  {C.DIM}(behavior, jumlah entri){C.RESET}")
+        print(f"  {C.CYAN}[0]{C.RESET} Kembali\n{sep(50)}")
+        pilih = ask(f"{C.YELLOW}Pilih ❯{C.RESET} ").strip()
+        if pilih == "0":
+            return
+        if pilih == "1":
+            _convert_one_rule(mrs)
+        elif pilih == "2":
+            print(); _convert_all_mrs(mrs)
+        elif pilih == "3":
+            _info_mrs(mrs)
+        else:
+            err("Pilihan tidak valid."); time.sleep(0.8); continue
+        pause()
+
+
+# ---------- Config tester ----------
+def _generated_configs():
+    out = []
+    for pid, P in PLATFORMS.items():
+        cp = os.path.join(BASE_DIR, P["out"], "config.yaml")
+        if os.path.isfile(cp):
+            out.append((pid, cp))
+    return out
+
+
+def _run_core_test(core, out_dir, cfg_path):
+    import subprocess
+    try:
+        r = subprocess.run([core, "-t", "-d", out_dir, "-f", cfg_path], capture_output=True, text=True, timeout=90)
+    except subprocess.TimeoutExpired:
+        return False, "timeout 90 dtk (kemungkinan core mencoba download provider / jaringan lambat)"
+    except OSError as e:
+        return False, str(e)
+    text = (r.stdout + r.stderr).strip().splitlines()
+    return r.returncode == 0, "\n".join(text[-6:])
+
+
+def feature_misc_config():
+    clear_screen(); banner("MISC"); section("Config Tester")
+    items = _generated_configs()
+    if not items:
+        err("Belum ada config hasil generate. Jalankan Convert dulu (menu 1)."); pause(); return
+    mrs = _import_tool("mrs_codec")
+    core = mrs.find_mihomo() if mrs else None
+    print(f"  {C.DIM}Core Mihomo: {core or 'tidak ditemukan (hanya validator internal; set HIKARI_MIHOMO=/path/core untuk mengaktifkan tes core)'}{C.RESET}\n")
+    for pid, cp in items:
+        P = PLATFORMS[pid]
+        print(f"{C.BOLD}{P['label']}{C.RESET}  {C.DIM}{os.path.relpath(cp, SCRIPT_DIR)}{C.RESET}")
+        try:
+            cfg = yaml.safe_load(read_text(cp))
+            if not isinstance(cfg, dict):
+                raise ValueError("bukan YAML mapping")
+        except (OSError, ValueError, yaml.YAMLError) as e:
+            err(f"YAML tidak terbaca: {e}\n"); continue
+        print_issues(validate_config(cfg, pid, os.path.dirname(cp)))
+        leaks = dns_leak_audit(cfg, pid)
+        print(f"  {C.DIM}Audit DNS leak (statis):{C.RESET}")
+        shown = False
+        for lvl, msg in leaks:
+            if lvl == "LEAK":
+                err(msg)
+            elif lvl == "WARN":
+                warn(msg)
+            else:
+                print(f"  {C.DIM}· {msg}{C.RESET}")
+            shown |= lvl in ("LEAK", "WARN")
+        if not shown:
+            ok("Tidak ada sumber bocor terdeteksi di config. Konfirmasi tetap di dnsleaktest.com / bash.ws dari perangkat.")
+        if not core:
+            print()
+        elif pid == "nikki" and not os.path.isdir(NIKKI_RUN_DIR):
+            print(f"  {C.DIM}tes core dilewati: path Nikki absolut ({NIKKI_RUN_DIR}) baru ada di perangkat Nikki-nya.{C.RESET}\n")
+        else:
+            spinner("mihomo -t", 0.3)
+            good, out = _run_core_test(core, os.path.dirname(cp), cp)
+            (ok if good else err)("mihomo -t: " + ("config diterima core" if good else "core menolak config"))
+            if out:
+                for ln in out.splitlines():
+                    print(f"    {C.DIM}{truncate(ln, 100)}{C.RESET}")
+            print()
+    pause()
+
+
+# ---------- Node tester ----------
+def _fmt_ms(v):
+    return f"{v}ms" if v is not None else "-"
+
+
+def _node_source():
+    """Return list node (dict) atau None kalau batal."""
+    print(f"  {C.CYAN}[1]{C.RESET} File provider hasil generate")
+    print(f"  {C.CYAN}[2]{C.RESET} Paste link URI {C.DIM}(vless:// vmess:// trojan://){C.RESET}")
+    print(f"  {C.CYAN}[0]{C.RESET} Batal\n{sep(50)}")
+    pilih = ask(f"{C.YELLOW}Sumber node ❯{C.RESET} ").strip()
+    if pilih == "1":
+        files = provider_files()
+        if not files:
+            err("Belum ada file provider hasil generate."); return None
+        path = _pick_file([(lbl, p) for lbl, p in files], "Pilih nomor file")
+        return load_provider_nodes(path) if path else None
+    if pilih == "2":
+        lines = _collect_lines(["Paste link, satu per baris. Enter kosong = selesai.", "Ketik 'batal' untuk kembali."])
+        if not lines:
+            return None
+        nodes = []
+        for i, ln in enumerate(lines, 1):
+            try:
+                n = convert_line(ln)
+                if n:
+                    nodes.append(n)
+            except Exception as e:
+                warn(f"baris {i} dilewati: {e}")
+        return nodes
+    return None
+
+
+def _progress(done, total):
+    if sys.stdout.isatty():
+        sys.stdout.write(f"\r  {C.DIM}menguji {done}/{total}{C.RESET}   "); sys.stdout.flush()
+        if done == total:
+            sys.stdout.write("\r" + " " * 30 + "\r")
+
+
+def _node_test_offline(nt):
+    nodes = _node_source()
+    if nodes is None:
+        return
+    if not nodes:
+        warn("Tidak ada node untuk diuji."); return
+    raw = ask(f"{C.YELLOW}Timeout per tahap, detik (Enter=5) ❯{C.RESET} ").strip()
+    timeout = float(raw) if raw.replace(".", "", 1).isdigit() and float(raw) > 0 else 5.0
+    print(f"\n  {C.DIM}Menguji {len(nodes)} node (DNS → TCP → TLS)...{C.RESET}")
+    results = nt.run_batch(nodes, timeout=timeout, progress=_progress)
+    order = sorted(range(len(results)), key=lambda i: nt.sort_key(results[i]))
+    print(f"\n  {C.BOLD}{'No':<3} {'Nama':<22} {'Tipe':<6} {'DNS':>7} {'TCP':>7} {'TLS':>7}  Status{C.RESET}")
+    for n, i in enumerate(order, 1):
+        r = results[i]
+        col = C.GREEN if r["ok"] else (C.YELLOW if r["status"].startswith("dilewati") else C.RED)
+        print(f"  {n:<3} {truncate(r['name'], 22):<22} {r['type'][:6]:<6} {_fmt_ms(r['dns_ms']):>7} "
+              f"{_fmt_ms(r['tcp_ms']):>7} {_fmt_ms(r['tls_ms']):>7}  {col}{r['status']}{C.RESET}")
+    s = nt.summarize(results)
+    print(f"\n  {C.GREEN}{s['ok']} hidup{C.RESET} · {C.RED}{s['fail']} gagal{C.RESET} · {C.YELLOW}{s['skipped']} dilewati{C.RESET} · total {s['total']}")
+    print(f"  {C.DIM}Ini tes jangkauan server dari jaringan ini (DNS/TCP/TLS), bukan jaminan proxy-nya tembus ke internet.{C.RESET}")
+    good = [nodes[i] for i in range(len(nodes)) if results[i]["ok"]]
+    if good and ask(f"\n  Simpan {len(good)} node yang hidup ke file provider? (y/N) ❯ ").strip().lower() == "y":
+        os.makedirs(BASE_DIR, exist_ok=True)
+        path = os.path.join(BASE_DIR, f"nodes_ok_{time.strftime('%d%m%Y_%H%M%S')}.yaml")
+        save_proxy_yaml(good, path)
+        ok(f"Tersimpan: {path}")
+
+
+def _node_test_api(nt):
+    default_secret = _template_secret()
+    base = ask(f"{C.YELLOW}Alamat controller (Enter=127.0.0.1:9090) ❯{C.RESET} ").strip() or "127.0.0.1:9090"
+    secret = ask(f"{C.YELLOW}Secret (Enter={default_secret or 'kosong'}) ❯{C.RESET} ").strip() or default_secret
+    url = ask(f"{C.YELLOW}URL tes (Enter=gstatic generate_204) ❯{C.RESET} ").strip() or "http://www.gstatic.com/generate_204"
+    try:
+        base = nt.normalize_base(base)
+        names = nt.api_list_nodes(base, secret)
+    except (OSError, ValueError) as e:
+        err(str(e)); return
+    if not names:
+        warn("Core hidup tapi belum ada node (provider kosong?)."); return
+    print(f"\n  {C.DIM}Mengukur delay {len(names)} node lewat core ({base})...{C.RESET}")
+    results = nt.run_api_delay(base, secret, names, url, progress=_progress)
+    results.sort(key=lambda r: (not r["ok"], r["delay"] or 0, r["name"]))
+    print(f"\n  {C.BOLD}{'No':<3} {'Nama':<34} {'Delay':>8}  Status{C.RESET}")
+    for n, r in enumerate(results, 1):
+        col = C.GREEN if r["ok"] else C.RED
+        print(f"  {n:<3} {truncate(r['name'], 34):<34} {_fmt_ms(r['delay']):>8}  {col}{r['status']}{C.RESET}")
+    good = sum(1 for r in results if r["ok"])
+    print(f"\n  {C.GREEN}{good} lolos{C.RESET} · {C.RED}{len(results) - good} gagal{C.RESET} · total {len(results)}")
+
+
+def feature_misc_nodes():
+    nt = _import_tool("nodetest")
+    if not nt:
+        pause(); return
+    while True:
+        clear_screen(); banner("MISC"); section("Proxy Node Tester")
+        print(f"  {C.CYAN}[1]{C.RESET} Offline  {C.DIM}(DNS → TCP → TLS ke server node, tanpa core){C.RESET}")
+        print(f"  {C.CYAN}[2]{C.RESET} Via core {C.DIM}(delay sungguhan lewat external-controller Mihomo yang sedang jalan){C.RESET}")
+        print(f"  {C.CYAN}[0]{C.RESET} Kembali\n{sep(50)}")
+        pilih = ask(f"{C.YELLOW}Pilih ❯{C.RESET} ").strip()
+        if pilih == "0":
+            return
+        if pilih == "1":
+            print(); _node_test_offline(nt)
+        elif pilih == "2":
+            print(); _node_test_api(nt)
+        else:
+            err("Pilihan tidak valid."); time.sleep(0.8); continue
+        pause()
+
+
+# ---------- Route tester ----------
+def feature_misc_route():
+    rt = _import_tool("routetest")
+    if not rt:
+        pause(); return
+    clear_screen(); banner("MISC"); section("Route Tester")
+    tpl = find_template()
+    if not tpl:
+        err("Template tidak ditemukan."); pause(); return
+    print(f"  {C.CYAN}[B]{C.RESET} Box   {C.CYAN}[N]{C.RESET} Nikki   {C.CYAN}[O]{C.RESET} OpenClash   {C.DIM}(rule beda: WIFI hanya ada di Box){C.RESET}")
+    plat = {"b": "box", "n": "nikki", "o": "openclash"}.get(ask(f"{C.YELLOW}Platform (Enter=B) ❯{C.RESET} ").strip().lower() or "b")
+    if not plat:
+        err("Pilihan tidak valid."); time.sleep(1); return
+    try:
+        cfg, _ = build_config(read_text(tpl), plat)
+    except Exception as e:
+        err(f"Gagal build config: {e}"); pause(); return
+    print(f"\n  {C.DIM}Template: {os.path.basename(tpl)} · ruleset: ruleset/ · tanpa DNS lookup (offline).")
+    print(f"  Contoh: youtube.com   chatgpt.com:443   1.1.1.1   udp://example.com:443{C.RESET}")
+    seen_skips = set()                       # peringatan "tidak bisa dievaluasi" cukup sekali per sesi
+    while True:
+        target = ask(f"\n{C.YELLOW}Domain/IP (Enter = selesai) ❯{C.RESET} ").strip()
+        if not target:
+            return
+        res = rt.route(cfg, RULESET_SOURCE, target)
+        port = f":{res['port']}" if res["port"] else ""
+        print(f"  {C.DIM}{res['proto']}://{res['host']}{port}{C.RESET}")
+        f = res["final"]
+        if f:
+            ok(f"group {C.BOLD}{f['group']}{C.RESET}   ← {f['rule']}")
+            print(f"    {C.DIM}cocok: {f['detail']}{C.RESET}")
+        else:
+            warn("tidak ada rule yang cocok (jatuh ke DIRECT)")
+        for sh in res["shadowed"]:
+            print(f"    {C.DIM}tertimpa: {sh['rule']}  → {sh['group']}{C.RESET}")
+        for sk in res["skipped"]:
+            if sk not in seen_skips:
+                seen_skips.add(sk)
+                warn(f"tidak bisa dievaluasi (dicatat sekali): {truncate(sk, 90)}")
+        for name, why in res["load_errors"].items():
+            warn(f"provider {name}: {why}")
+
+
+# ---------- Info ----------
+def feature_misc_info():
+    clear_screen(); banner("MISC"); section("Info Lingkungan")
+    mrs = _import_tool("mrs_codec")
+    print(f"  Python        : {sys.version.split()[0]}")
+    print(f"  PyYAML        : {getattr(yaml, '__version__', '?')}")
+    be = mrs.backend_name() if mrs else None
+    print(f"  zstd (.mrs)   : {be or 'tidak ada — ' + (mrs.INSTALL_HINT.splitlines()[0] if mrs else '')}")
+    core = mrs.find_mihomo() if mrs else None
+    print(f"  Core Mihomo   : {core or 'tidak ditemukan (opsional; env HIKARI_MIHOMO untuk path manual)'}")
+    tpl = find_template()
+    print(f"  Template aktif: {os.path.relpath(tpl, SCRIPT_DIR) if tpl else '-'}  (versi {template_version(tpl) or '?'})")
+    ecfg = load_emoji_cfg()
+    print(f"  Emoji node    : {'ON' if ecfg['enabled'] else 'OFF'} ({len(ecfg['emojis'])} emoji)")
+    print(f"  Folder script : {SCRIPT_DIR}")
+    print(f"  Folder hasil  : {BASE_DIR}")
+    pause()
+
+
+def feature_misc_menu():
+    while True:
+        clear_screen(); banner("MISC"); section("Miscellaneous")
+        print(f"  {C.CYAN}[1]{C.RESET} Rule-Provider Converter  {C.DIM}(.mrs ⇄ .yaml / .txt){C.RESET}")
+        print(f"  {C.CYAN}[2]{C.RESET} Config Tester            {C.DIM}(validator + mihomo -t bila core ada){C.RESET}")
+        print(f"  {C.CYAN}[3]{C.RESET} Proxy Node Tester        {C.DIM}(offline atau via core){C.RESET}")
+        print(f"  {C.CYAN}[4]{C.RESET} Route Tester             {C.DIM}(domain/IP ➜ rule & group){C.RESET}")
+        print(f"  {C.CYAN}[5]{C.RESET} Info Lingkungan")
+        print(f"  {C.CYAN}[0]{C.RESET} Kembali ke Menu Utama\n{sep(50)}")
+        pilih = ask(f"{C.YELLOW}Pilih menu ❯{C.RESET} ").strip()
+        if pilih == "0":
+            return
+        elif pilih == "1": feature_misc_rules()
+        elif pilih == "2": feature_misc_config()
+        elif pilih == "3": feature_misc_nodes()
+        elif pilih == "4": feature_misc_route()
+        elif pilih == "5": feature_misc_info()
+        else:
+            err("Pilihan tidak valid."); time.sleep(0.8)
+
+
+# =====================================================================
 #  Menu
 # =====================================================================
 def feature_convert_menu():
@@ -1514,28 +2485,36 @@ def ensure_emoji_file():
 
 def main():
     ensure_emoji_file()
+    startup_notes = migrate_legacy_layout()
+    load_emoji_cfg()
+    if EMOJI_WARNING:
+        startup_notes.append(EMOJI_WARNING)
     try:
         prepare_dirs()
     except OSError as e:
-        err(f"Tidak bisa membuat folder Hasil/: {e}")
+        err(f"Tidak bisa membuat folder hasil/: {e}")
         print("  Pindahkan folder script ke /storage/emulated/0/ (jalankan `termux-setup-storage` dulu).")
         sys.exit(1)
     while True:
         clear_screen(); banner(); section("MENU UTAMA")
+        for n in startup_notes:
+            warn(n)
         print(f"  {C.CYAN}[1]{C.RESET} Convert")
         print(f"  {C.CYAN}[2]{C.RESET} Edit Configuration")
         print(f"  {C.CYAN}[3]{C.RESET} Check Status")
         print(f"  {C.CYAN}[4]{C.RESET} Validasi / Audit Config")
         print(f"  {C.CYAN}[5]{C.RESET} Tools Ruleset")
-        print(f"  {C.CYAN}[6]{C.RESET} Exit\n{sep(50)}")
+        print(f"  {C.CYAN}[6]{C.RESET} Exit")
+        print(f"  {C.CYAN}[7]{C.RESET} Miscellaneous {C.DIM}(converter .mrs, tester config/node/route){C.RESET}\n{sep(50)}")
         pilihan = ask(f"{C.YELLOW}Pilih menu ❯{C.RESET} ").strip()
         if pilihan == "1":   feature_convert_menu()
         elif pilihan == "2": feature_edit_config()
         elif pilihan == "3": feature_check_status()
         elif pilihan == "4": feature_validate()
         elif pilihan == "5": feature_tools()
+        elif pilihan == "7": feature_misc_menu()
         elif pilihan == "6":
-            clear_screen(); print(f"\n  {C.GREEN}Terima kasih sudah pakai Hikari Subclash!{C.RESET}\n"); sys.exit(0)
+            clear_screen(); print(f"\n  {C.GREEN}Terima kasih sudah pakai Hikari /.CLASH!{C.RESET}\n"); sys.exit(0)
         else:
             err("Pilihan tidak valid."); time.sleep(0.8)
 
